@@ -1,4 +1,5 @@
 import { createRouter, createWebHistory } from 'vue-router'
+import { useUserStore } from '@/stores/user'
 
 const router = createRouter({
   history: createWebHistory('/'),
@@ -52,18 +53,25 @@ const router = createRouter({
   ]
 })
 
-router.beforeEach((to, _from, next) => {
-  const token = sessionStorage.getItem('token')
-  const userInfoStr = sessionStorage.getItem('userInfo')
-  const role = userInfoStr ? JSON.parse(userInfoStr).role : null
+router.beforeEach(async (to, _from, next) => {
+  const userStore = useUserStore()
+  const token = userStore.token
+  const userInfo = userStore.userInfo
+  const role = userInfo ? userInfo.role : null
 
-  // 未登录用户，非登录/注册页则跳转至 /login
+  // 1. 未登录拦截：非登录/注册页且无 token，强制重定向至 /login
   if (to.path !== '/login' && to.path !== '/register' && !token) {
     next('/login')
     return
   }
 
-  // 需要管理员权限的路由，角色不符则跳转首页
+  // 2. 已登录防重走：如果已登录还要去登录页，直接跳转首页
+  if ((to.path === '/login' || to.path === '/register') && token) {
+    next('/')
+    return
+  }
+
+  // 3. 权限校验
   if (to.meta.requiresAdmin && role !== 'ADMIN') {
     next('/')
     return

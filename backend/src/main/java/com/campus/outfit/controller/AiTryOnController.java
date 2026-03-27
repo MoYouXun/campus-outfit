@@ -1,34 +1,38 @@
 package com.campus.outfit.controller;
 
-import com.campus.outfit.service.AiService;
+import com.campus.outfit.dto.AiTryOnRequest;
+import com.campus.outfit.dto.AiTryOnResponse;
+import com.campus.outfit.security.JwtUtils;
+import com.campus.outfit.service.AiTryOnService;
 import com.campus.outfit.utils.Result;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
 
-import java.util.Map;
-
+/**
+ * AI 试衣间 API 控制器
+ */
 @RestController
-@RequestMapping("/api/ai")
+@RequestMapping("/api/ai/try-on")
 public class AiTryOnController {
 
     @Autowired
-    private AiService aiService;
+    private AiTryOnService aiTryOnService;
 
-    @PostMapping("/try-on")
-    public Result<String> tryOnOutfit(@RequestBody Map<String, String> request) {
-        try {
-            String personImageUrl = request.get("personImageUrl");
-            String outfitImageUrl = request.get("outfitImageUrl");
-            
-            if (personImageUrl == null || outfitImageUrl == null) {
-                return Result.fail("人像图片和服装图片不能为空");
-            }
-            
-            String resultUrl = aiService.generateTryOnImage(personImageUrl, outfitImageUrl);
-            return Result.success(resultUrl);
-        } catch (Exception e) {
-            e.printStackTrace();
-            return Result.fail("换装处理失败：" + e.getMessage());
-        }
+    @Autowired
+    private JwtUtils jwtUtils;
+
+    /**
+     * 发起 AI 试衣生成请求
+     */
+    @PostMapping("/generate")
+    public Result<AiTryOnResponse> generate(@RequestBody AiTryOnRequest request, 
+                                           @RequestHeader("Authorization") String token) {
+        // 从 Token 中解析用户 ID
+        Long userId = jwtUtils.getUserIdFromToken(token.replace("Bearer ", ""));
+        
+        // 执行生成逻辑
+        AiTryOnResponse response = aiTryOnService.generate(request, userId);
+        
+        return Result.success(response);
     }
 }

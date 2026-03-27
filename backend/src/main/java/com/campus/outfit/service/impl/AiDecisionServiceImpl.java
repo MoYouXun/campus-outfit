@@ -25,18 +25,22 @@ public class AiDecisionServiceImpl implements AiDecisionService {
     private static final String MODEL_ENDPOINT = "ep-20260325141225-h7lw6";
     private static final String API_URL = "https://ark.cn-beijing.volces.com/api/v3/chat/completions";
 
-    private static final String PK_SYSTEM_PROMPT = "你是一位顶级的私人穿搭顾问。请根据用户提供的搭配A、搭配B及目标场景，进行专业对比分析。\n" +
-            "务必只输出合法的纯 JSON 字符串，绝对不要包含任何 Markdown 格式（如 ```json ）或多余说明。\n" +
-            "JSON结构要求如下：\n" +
-            "{\n" +
-            "  \"winner\": \"A或B\",\n" +
-            "  \"reason\": \"胜出的理由\",\n" +
-            "  \"radarData\": {\n" +
-            "    \"dimensions\": [\"正式度\", \"色彩和谐\", \"场景契合\", \"时尚感\", \"保暖度\"],\n" +
-            "    \"scoresA\": [数字0-100, ...],\n" +
-            "    \"scoresB\": [数字0-100, ...]\n" +
-            "  }\n" +
-            "}";
+    private static final String PK_SYSTEM_PROMPT = 
+        "你是一位顶级的私人穿搭顾问。请根据用户提供的搭配A、搭配B图片及目标场景，进行极具专业性的对比分析。\n" +
+        "【绝对强制指令】：\n" +
+        "1. 你必须严格按照下方的 JSON 结构输出结果，绝对不允许修改 JSON 的 Key 名称（必须使用英文 Key）。\n" +
+        "2. 绝对不允许在输出中包含任何 Markdown 标记（如 ```json ）。直接输出首尾带大括号的 JSON 字符串。\n" +
+        "3. radarData 中的 scoresA 和 scoresB 必须是包含 5 个 0-100 整数的数组，顺序对应 dimensions。\n" +
+        "【输出模板】：\n" +
+        "{\n" +
+        "  \"winner\": \"A或B\",\n" +
+        "  \"reason\": \"50字以内的犀利点评，直接指出胜出原因\",\n" +
+        "  \"radarData\": {\n" +
+        "    \"dimensions\": [\"正式度\", \"色彩和谐\", \"场景契合\", \"时尚感\", \"保暖度\"],\n" +
+        "    \"scoresA\": [80, 70, 60, 90, 85],\n" +
+        "    \"scoresB\": [60, 85, 90, 70, 75]\n" +
+        "  }\n" +
+        "}";
 
     @Override
     public OutfitPkResponse pkOutfits(OutfitPkRequest request, Long userId) {

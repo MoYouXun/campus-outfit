@@ -6,3 +6,10 @@ import request from '@/utils/request'
 export async function pkOutfits(data: { imageAUrl: string; imageBUrl: string; scene: string }) {
   return request.post('/ai/decision/pk', data)
 }
+
+/**
+ * 发起 AI 试衣生成请求
+ */
+export async function generateTryOn(data: { humanImageUrl: string; garmentImageUrl: string; category?: string }) {
+  return request.post('/ai/try-on/generate', data)
+}

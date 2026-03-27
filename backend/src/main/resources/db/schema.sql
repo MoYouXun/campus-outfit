@@ -194,3 +194,24 @@ INSERT INTO topic (name, description) VALUES
 ('街头潮流', '时髦有态度的街头风格'),
 ('日系清新', '清新治愈的日系穿搭'),
 ('复古风格', '经典复古的timeless穿搭');
+
+-- =============================================
+-- 9. 衣柜单品表
+-- =============================================
+CREATE TABLE wardrobe_item (
+    id                  BIGINT        NOT NULL AUTO_INCREMENT COMMENT '单品ID',
+    user_id             BIGINT        NOT NULL COMMENT '所属用户ID',
+    original_image_url  VARCHAR(500)  NULL COMMENT '原始图片URL',
+    processed_image_url VARCHAR(500)  NULL COMMENT '处理后图片URL',
+    category_main       VARCHAR(50)   NULL COMMENT '主类目',
+    category_sub        VARCHAR(50)   NULL COMMENT '子类目',
+    color               VARCHAR(50)   NULL COMMENT '颜色',
+    material            VARCHAR(50)   NULL COMMENT '材质',
+    season              VARCHAR(50)   NULL COMMENT '适合季节',
+    ai_raw_tags         TEXT          NULL COMMENT 'AI原始标签',
+    create_time         DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    update_time         DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+    deleted             TINYINT       NOT NULL DEFAULT 0 COMMENT '逻辑删除',
+    PRIMARY KEY (id),
+    KEY idx_user_id (user_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='衣柜单品表';

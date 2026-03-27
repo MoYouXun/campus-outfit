@@ -39,8 +39,9 @@ public class CommunityController {
     public Result<IPage<Outfit>> getFeed(@RequestParam(defaultValue = "1") int page, 
                                         @RequestParam(defaultValue = "10") int size, 
                                         @RequestParam(defaultValue = "new") String sortBy,
-                                        @RequestParam(required = false) Long topicId) {
-        return Result.success(outfitService.getPublicOutfits(page, size, sortBy, topicId));
+                                        @RequestParam(required = false) Long topicId,
+                                        @RequestParam(required = false) Long currentUserId) {
+        return Result.success(outfitService.getPublicOutfits(page, size, sortBy, topicId, null, currentUserId));
     }
 
     @GetMapping("/following")
@@ -51,7 +52,7 @@ public class CommunityController {
         List<Long> followingIds = followings.getRecords().stream()
                 .map(com.campus.outfit.entity.Follow::getFolloweeId)
                 .collect(java.util.stream.Collectors.toList());
-        return Result.success(outfitService.getFollowingOutfits(followingIds, page, size));
+        return Result.success(outfitService.getFollowingOutfits(followingIds, page, size, currentUserId));
     }
 
     @GetMapping("/outfit/{id}")

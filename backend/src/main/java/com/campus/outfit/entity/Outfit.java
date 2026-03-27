@@ -56,6 +56,12 @@ public class Outfit implements Serializable {
     private Integer favCount;
     private Integer viewCount;
 
+    @TableField(exist = false)
+    private Boolean liked = false;
+
+    @TableField(exist = false)
+    private Boolean favorited = false;
+
     @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
     @TableField(value = "create_time", fill = FieldFill.INSERT)
     private LocalDateTime createTime;

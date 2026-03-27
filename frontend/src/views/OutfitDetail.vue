@@ -243,7 +243,7 @@ onMounted(loadData)
               </div>
             </div>
             <el-button 
-              v-if="outfitDetail.author.id !== currentUserId"
+              v-if="String(outfitDetail.author.id) !== String(currentUserId)"
               :type="outfitDetail.followingAuthor ? 'info' : 'primary'" 
               round size="small" plain
               @click="handleFollow"

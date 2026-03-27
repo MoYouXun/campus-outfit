@@ -11,6 +11,8 @@ import com.campus.outfit.entity.OutfitTopic;
 import com.campus.outfit.mapper.OutfitMapper;
 import com.campus.outfit.mapper.OutfitTopicMapper;
 import com.campus.outfit.service.AiService;
+import com.campus.outfit.service.FavoriteService;
+import com.campus.outfit.service.LikeService;
 import com.campus.outfit.service.MinioService;
 import com.campus.outfit.service.OutfitService;
 import com.campus.outfit.service.TopicService;
@@ -44,16 +46,26 @@ public class OutfitServiceImpl extends ServiceImpl<OutfitMapper, Outfit> impleme
     @Autowired
     private ObjectMapper objectMapper;
 
+    @Autowired
+    private LikeService likeService;
+
+    @Autowired
+    private FavoriteService favoriteService;
+
     @Override
     public IPage<Outfit> getPublicOutfits(int page, int size) {
-        return getPublicOutfits(page, size, "latest", null);
+        return getPublicOutfits(page, size, "latest", null, null, null);
     }
 
     @Override
-    public IPage<Outfit> getPublicOutfits(int page, int size, String sortBy, Long topicId) {
+    public IPage<Outfit> getPublicOutfits(int page, int size, String sortBy, Long topicId, Long targetUserId, Long currentUserId) {
         LambdaQueryWrapper<Outfit> wrapper = new LambdaQueryWrapper<Outfit>()
                 .eq(Outfit::getIsPublic, true)
                 .eq(Outfit::getStatus, "PUBLISHED");
+        
+        if (targetUserId != null) {
+            wrapper.eq(Outfit::getUserId, targetUserId);
+        }
         
         if (topicId != null) {
             List<com.campus.outfit.entity.OutfitTopic> relations = outfitTopicMapper.selectList(
@@ -75,12 +87,22 @@ public class OutfitServiceImpl extends ServiceImpl<OutfitMapper, Outfit> impleme
         }
         
         IPage<Outfit> resultPage = page(new Page<>(page, size), wrapper);
-        resultPage.getRecords().forEach(this::refreshOutfitUrls);
+        resultPage.getRecords().forEach(item -> {
+            refreshOutfitUrls(item);
+            populateLikedAndFavorited(item, currentUserId);
+        });
         return resultPage;
     }
 
+    private void populateLikedAndFavorited(Outfit outfit, Long currentUserId) {
+        if (currentUserId != null && outfit != null) {
+            outfit.setLiked(likeService.isLiked(currentUserId, outfit.getId()));
+            outfit.setFavorited(favoriteService.isFavorited(currentUserId, outfit.getId()));
+        }
+    }
+
     @Override
-    public IPage<Outfit> getFollowingOutfits(List<Long> followingIds, int page, int size) {
+    public IPage<Outfit> getFollowingOutfits(List<Long> followingIds, int page, int size, Long currentUserId) {
         if (followingIds == null || followingIds.isEmpty()) {
             return new Page<>(page, size);
         }
@@ -92,7 +114,10 @@ public class OutfitServiceImpl extends ServiceImpl<OutfitMapper, Outfit> impleme
                 .orderByDesc(Outfit::getCreateTime);
         
         IPage<Outfit> resultPage = page(new Page<>(page, size), wrapper);
-        resultPage.getRecords().forEach(this::refreshOutfitUrls);
+        resultPage.getRecords().forEach(item -> {
+            refreshOutfitUrls(item);
+            populateLikedAndFavorited(item, currentUserId);
+        });
         return resultPage;
     }
 

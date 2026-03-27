@@ -2,7 +2,7 @@
 import { ref, onMounted, computed } from 'vue'
 import { useRoute } from 'vue-router'
 import { getUserInfo, followUser, unfollowUser } from '@/api/user'
-import { getMyOutfits, deleteOutfit } from '@/api/outfit'
+import { getMyOutfits, getUserOutfits, deleteOutfit } from '@/api/outfit'
 import MasonryGallery from '@/components/MasonryGallery.vue'
 import { useUserStore } from '@/stores/user'
 import { ElMessage } from 'element-plus'
@@ -26,10 +26,19 @@ const loadUser = async () => {
     isFollowing.value = res.following // Jackson 序列化 isFollowing 为 following
     
     // 检查是否是当前用户
-    isCurrentUser.value = user.value && currentUserId.value && user.value.id === currentUserId.value
+    isCurrentUser.value = user.value && currentUserId.value && Number(user.value.id) === Number(currentUserId.value)
     
-    // 加载该用户的穿搭
-    const outfitsRes: any = await getMyOutfits({ page: 1, size: 20, userId: user.value.id })
+    // 加载该用户的穿搭：本人展示全部（含私密），他人仅展示公开
+    let outfitsRes: any
+    if (isCurrentUser.value) {
+      outfitsRes = await getMyOutfits({ page: 1, size: 20 })
+    } else {
+      outfitsRes = await getUserOutfits(userId, { 
+        page: 1, 
+        size: 20, 
+        currentUserId: currentUserId.value 
+      })
+    }
     outfits.value = outfitsRes.records || []
   } catch (e) {
     console.error(e)

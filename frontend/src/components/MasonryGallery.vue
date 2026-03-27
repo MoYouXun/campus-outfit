@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { Star, StarFilled, Picture, Delete } from '@element-plus/icons-vue'
+import { Star, StarFilled, Picture, Delete, Pointer, MagicStick } from '@element-plus/icons-vue'
 import { getImageUrl } from '../api/image'
 import { useUserStore } from '@/stores/user'
 
@@ -10,7 +10,7 @@ const props = defineProps<{
 }>()
 
 const router = useRouter()
-const emit = defineEmits(['like', 'delete'])
+const emit = defineEmits(['like', 'favorite', 'delete'])
 
 // 获取当前登录用户信息
 const userStore = useUserStore()
@@ -21,7 +21,8 @@ const userStore = useUserStore()
 // 检查当前登录用户是否是帖子所有者
 const isPostOwner = (item: any): boolean => {
   const currentId = userStore.userInfo?.id || userStore.userInfo?.userId || null
-  return item.userId === currentId
+  // 将 ID 统一转为 String 进行比较，避免 Number/String 类型混用导致的判断失效
+  return !!currentId && !!item.userId && String(item.userId) === String(currentId)
 }
 
 // 存储刷新后的URL，避免重复刷新
@@ -124,18 +125,46 @@ const handleItemClick = (item: any) => {
                   <el-icon size="20"><Delete /></el-icon>
                 </div>
               </div>
-              <!-- 点赞按钮 -->
-              <div class="absolute bottom-4 right-4 animate-fade-in" @click.stop="emit('like', item)">
-                <div class="w-10 h-10 rounded-full bg-white/20 backdrop-blur-md flex-center text-white hover:bg-white/40 transition-colors">
-                  <el-icon size="20"><Star /></el-icon>
+              <!-- 交互按钮组 -->
+              <div class="absolute bottom-4 right-4 flex gap-2 animate-fade-in">
+                <!-- 点赞按钮 -->
+                <div 
+                  class="w-10 h-10 rounded-full backdrop-blur-md flex-center transition-all duration-300"
+                  :class="item.liked ? 'bg-red-500 text-white' : 'bg-white/20 text-white hover:bg-white/40'"
+                  @click.stop="emit('like', item)"
+                >
+                  <el-icon size="20"><Pointer /></el-icon>
+                </div>
+                <!-- 收藏按钮 -->
+                <div 
+                  class="w-10 h-10 rounded-full backdrop-blur-md flex-center transition-all duration-300"
+                  :class="item.favorited ? 'bg-yellow-500 text-white' : 'bg-white/20 text-white hover:bg-white/40'"
+                  @click.stop="emit('favorite', item)"
+                >
+                  <el-icon size="20">
+                    <component :is="item.favorited ? StarFilled : Star" />
+                  </el-icon>
                 </div>
               </div>
             </div>
             
-            <div v-if="item.recommendReason" class="absolute top-3 left-3 z-10">
-              <span class="px-2 py-0.5 text-[10px] rounded-md bg-yellow-400/90 text-yellow-900 border border-yellow-500/30 font-bold shadow-sm backdrop-blur-sm">
+            <div v-if="item.recommendReason" class="absolute top-3 left-3 z-10 max-w-[85%]">
+              <span class="px-2 py-0.5 text-[10px] rounded-md bg-yellow-400/90 text-yellow-900 border border-yellow-500/30 font-bold shadow-sm backdrop-blur-sm block truncate">
                 ✨ {{ item.recommendReason }}
               </span>
+            </div>
+
+            <!-- 匹配度分数与标签 -->
+            <div v-if="item.matchScore" class="absolute top-10 left-3 z-10 flex flex-col gap-1.5 animate-fade-in">
+              <span class="px-2.5 py-1 text-[11px] font-black rounded-full bg-gradient-to-r from-primary to-primary-light text-white border border-white/30 shadow-lg backdrop-blur-md flex items-center gap-1 w-fit">
+                <el-icon><MagicStick /></el-icon>
+                匹配度 {{ item.matchScore }}%
+              </span>
+              <div class="flex gap-1">
+                <span v-for="lb in item.matchLabels" :key="lb" class="px-1.5 py-0.5 text-[9px] font-bold rounded bg-black/40 text-white backdrop-blur-md border border-white/10">
+                  {{ lb }}
+                </span>
+              </div>
             </div>
             
             <div v-if="item.season" class="absolute top-3 right-3 shrink-0 z-10">
@@ -162,9 +191,9 @@ const handleItemClick = (item: any) => {
                 <el-avatar :size="24" :src="item.userAvatar" class="bg-primary/20" />
                 <span class="text-xs font-medium text-foreground/80 truncate max-w-[80px]">{{ item.username || '匿名用户' }}</span>
               </div>
-              <div class="flex items-center gap-1 text-muted-foreground text-[10px] font-medium">
-                <el-icon><StarFilled /></el-icon>
-                <span>{{ item.likeCount || 0 }}</span>
+              <div class="flex items-center gap-1 text-muted-foreground text-[10px] font-medium transition-colors" :class="{'text-yellow-500': item.favorited}">
+                <el-icon><component :is="item.favorited ? StarFilled : Star" /></el-icon>
+                <span>{{ item.favCount || 0 }}</span>
               </div>
             </div>
           </div>

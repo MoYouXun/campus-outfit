@@ -2,16 +2,30 @@ package com.campus.outfit.service.impl;
 
 import com.campus.outfit.service.WeatherService;
 import com.campus.outfit.vo.WeatherInfoVO;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
 
 import java.util.HashMap;
 import java.util.Map;
+import java.util.concurrent.TimeUnit;
 
 @Service
 public class WeatherServiceImpl implements WeatherService {
 
     private final RestTemplate restTemplate = new RestTemplate();
+    private final ObjectMapper objectMapper = new ObjectMapper();
+
+    // Redis 键前缀
+    private static final String CACHE_PREFIX = "weather:";
+    // 缓存 TTL：30 分钟（天气在短时间内变化不大）
+    private static final long CACHE_TTL_MINUTES = 30;
+
+
+    @Autowired
+    private RedisTemplate<String, Object> redisTemplate;
 
     // 预定义城市坐标映射 (Open-Meteo 需要经纬度)
     private static final Map<String, double[]> CITY_COORD_MAP = new HashMap<>();
@@ -40,18 +54,49 @@ public class WeatherServiceImpl implements WeatherService {
     }
 
     private WeatherInfoVO getWeatherAndDressIndexByLocation(Double lat, Double lon, String locationName) {
+        // 构建缓存键：精度保留 2 位小数（约 1km 粒度），减少缓存碎片
+        String cacheKey = CACHE_PREFIX + String.format("%.2f_%.2f", lat, lon);
+
+        // 1. 尝试从 Redis 读取缓存
         try {
-            // 使用 Open-Meteo 免费 API (无需 Key)
-            String url = String.format("https://api.open-meteo.com/v1/forecast?latitude=%f&longitude=%f&current_weather=true", lat, lon);
-            @SuppressWarnings("unchecked")
+            Object cached = redisTemplate.opsForValue().get(cacheKey);
+            if (cached != null) {
+                // 如果是 String 序列化，则反序列化回 VO
+                if (cached instanceof WeatherInfoVO) {
+                    return (WeatherInfoVO) cached;
+                }
+                // 如果 RedisTemplate 使用了 JSON 序列化器，通过 ObjectMapper 转换
+                return objectMapper.convertValue(cached, WeatherInfoVO.class);
+            }
+        } catch (Exception e) {
+            System.err.println("[WeatherCache] Redis 读取失败，降到直接请求: " + e.getMessage());
+        }
+
+        // 2. 缓存未命中，请求 Open-Meteo API
+        WeatherInfoVO result = fetchFromApi(lat, lon, locationName);
+
+        // 3. 写入 Redis 缓存，TTL 30 分钟
+        try {
+            redisTemplate.opsForValue().set(cacheKey, result, CACHE_TTL_MINUTES, TimeUnit.MINUTES);
+        } catch (Exception e) {
+            System.err.println("[WeatherCache] Redis 写入失败，继续使用直接结果: " + e.getMessage());
+        }
+
+        return result;
+    }
+
+    @SuppressWarnings("unchecked")
+    private WeatherInfoVO fetchFromApi(Double lat, Double lon, String locationName) {
+        try {
+            String url = String.format(
+                "https://api.open-meteo.com/v1/forecast?latitude=%f&longitude=%f&current_weather=true", lat, lon);
             Map<String, Object> response = restTemplate.getForObject(url, Map.class);
-            
+
             if (response != null && response.containsKey("current_weather")) {
-                @SuppressWarnings("unchecked")
                 Map<String, Object> current = (Map<String, Object>) response.get("current_weather");
                 double temp = ((Number) current.get("temperature")).doubleValue();
                 int weatherCode = ((Number) current.get("weathercode")).intValue();
-                
+
                 String desc = mapWeatherCode(weatherCode);
                 String dressIndex = getDressIndex(temp);
                 String suggestion = getSuggestion(temp, desc);

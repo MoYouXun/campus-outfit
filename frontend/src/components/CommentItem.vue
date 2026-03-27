@@ -36,7 +36,7 @@ const formatDate = (dateStr: string) => {
             回复
           </button>
           <button 
-            v-if="comment.userId === currentUserId"
+            v-if="String(comment.userId) === String(currentUserId)"
             class="text-[11px] font-medium text-muted-foreground hover:text-destructive transition-colors cursor-pointer border-0 bg-transparent p-0"
             @click="emit('delete', comment.id)"
           >

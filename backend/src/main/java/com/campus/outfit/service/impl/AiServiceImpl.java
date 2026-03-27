@@ -9,7 +9,9 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import org.springframework.util.DigestUtils;
 import org.springframework.web.client.RestTemplate;
 
 import lombok.extern.slf4j.Slf4j;
@@ -18,6 +20,9 @@ import java.util.Base64;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 
 @Slf4j
 @Service
@@ -26,11 +31,17 @@ public class AiServiceImpl implements AiService {
     @Value("${api.doubao.key}")
     private String doubaoKey;
 
-    @Value("${api.doubao.endpoint-id:}")
+    @Value("${api.doubao.endpoint-lite:}")
     private String endpointId;
 
     @Value("${api.doubao.endpoint-mini:}")
     private String endpointMini;
+
+    @Autowired
+    private org.springframework.data.redis.core.RedisTemplate<String, Object> redisTemplate;
+
+    private static final String CACHE_PREFIX = "ai:recommend:";
+    private static final long CACHE_TTL_MINUTES = 10; // 缓存 10 分钟
 
     private final RestTemplate restTemplate;
     private final ObjectMapper objectMapper = new ObjectMapper();
@@ -125,7 +136,7 @@ public class AiServiceImpl implements AiService {
             content = content.trim();
 
             try {
-                return objectMapper.readValue(content, AiAnalysisResult.class);
+                return objectMapper.readValue(extractJson(content), AiAnalysisResult.class);
             } catch (Exception e) {
                 throw new RuntimeException("JSON 解析失败，原始内容: " + content, e);
             }
@@ -143,20 +154,34 @@ public class AiServiceImpl implements AiService {
 
     @Override
     public AiRecommendationResult recommendOutfit(String prompt) {
-        log.info("[DEBUG] 开始根据场景和衣橱推荐穿搭...");
+        // 使用 MD5 对 prompt 生成唯一键，作为缓存 ID
+        String promptMd5 = DigestUtils.md5DigestAsHex(prompt.getBytes());
+        String cacheKey = CACHE_PREFIX + promptMd5;
+
+        // 1. 尝试从缓存获取
+        try {
+            Object cached = redisTemplate.opsForValue().get(cacheKey);
+            if (cached != null) {
+                if (cached instanceof AiRecommendationResult) return (AiRecommendationResult) cached;
+                return objectMapper.convertValue(cached, AiRecommendationResult.class);
+            }
+        } catch (Exception e) {
+            log.warn("AI 推荐缓存读取异常: {}", e.getMessage());
+        }
+
+        log.info("[DEBUG] 缓存未命中，开始向大模型发起请求...");
         String url = "https://ark.cn-beijing.volces.com/api/v3/chat/completions";
 
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_JSON);
         headers.setBearerAuth(doubaoKey);
-        headers.setConnection("close"); // 禁用 Keep-Alive 防止由于服务端提早断开连接导致的 EOF 异常
 
         Map<String, Object> systemMessage = new HashMap<>();
         systemMessage.put("role", "system");
         systemMessage.put("content", "你是一位专业的校园穿搭顾问。请根据用户提供的天气、场景和私服信息，返回一个严格格式为JSON的推荐结果，包含以下字段：\n" +
                 "1. outfitIds (整数数组): 优先在用户提供的私人衣橱列表中挑选出最合适的衣服组合ID（如 [1, 5, 8]）。私人衣橱为空或没有衣服合适时，必须返回空数组 []。\n" +
                 "2. reasoning (字符串): 你给出的穿搭解析或单品搭配指南，请充分体现针对场景和当天天气的关怀，字数约60字。\n" +
-                "3. searchTags (字符串数组): 仅当 outfitIds 为空时，你需要推断用户需要什么样风格的衣服（如 [\"风衣\", \"休闲\", \"浅色\"]）。最多提供3个精确关联标签。如果有私服返回则此字段依然提供或置空皆可。\n" +
+                "3. searchTags (字符串数组): 仅当 outfitIds 为空时，你需要推断用户需要什么样风格的衣服（如 [\"风衣\", \"休闲\", \"浅色\"]）。最多提供3个精确关联标签。\n" +
                 "回答仅限合法JSON。");
 
         Map<String, Object> userMessage = new HashMap<>();
@@ -166,33 +191,43 @@ public class AiServiceImpl implements AiService {
         Map<String, Object> requestBody = new HashMap<>();
         String modelEp = (endpointMini != null && !endpointMini.isEmpty()) ? endpointMini : endpointId;
         requestBody.put("model", modelEp);
-        requestBody.put("messages", Arrays.asList(systemMessage, userMessage));
+        requestBody.put("messages", java.util.Arrays.asList(systemMessage, userMessage));
 
         HttpEntity<Map<String, Object>> entity = new HttpEntity<>(requestBody, headers);
 
         try {
-            String responseStr = restTemplate.postForObject(url, entity, String.class);
-            JsonNode root = objectMapper.readTree(responseStr);
-            
-            if (root.has("error")) {
-                throw new RuntimeException("豆包 API 报错: " + root.path("error").path("message").asText());
-            }
+            AiRecommendationResult result = CompletableFuture.supplyAsync(() -> {
+                try {
+                    String responseStr = restTemplate.postForObject(url, entity, String.class);
+                    JsonNode root = objectMapper.readTree(responseStr);
+                    if (root.has("error")) throw new RuntimeException(root.path("error").path("message").asText());
 
-            String content = root.path("choices").path(0).path("message").path("content").asText();
-            
-            // 提取 JSON
-            int jsonStartIndex = content.indexOf("{");
-            int jsonEndIndex = content.lastIndexOf("}");
-            if (jsonStartIndex != -1 && jsonEndIndex != -1) {
-                content = content.substring(jsonStartIndex, jsonEndIndex + 1);
-            }
+                    String content = root.path("choices").path(0).path("message").path("content").asText();
+                    int start = content.indexOf("{");
+                    int end = content.lastIndexOf("}");
+                    if (start != -1 && end != -1) content = content.substring(start, end + 1);
+                    return objectMapper.readValue(content, AiRecommendationResult.class);
+                } catch (Exception ex) {
+                    throw new RuntimeException(ex);
+                }
+            }).get(8, TimeUnit.SECONDS);
 
-            return objectMapper.readValue(content, AiRecommendationResult.class);
+            // 存入缓存
+            if (result != null) {
+                redisTemplate.opsForValue().set(cacheKey, result, CACHE_TTL_MINUTES, TimeUnit.MINUTES);
+            }
+            return result;
+        } catch (TimeoutException e) {
+            log.warn("AI 推荐超时（>8s），已降级");
+            AiRecommendationResult fallback = new AiRecommendationResult();
+            fallback.setOutfitIds(java.util.Collections.emptyList());
+            fallback.setReasoning("⚡ 正在为您穿透全站灵感，结合今日天气和热门动态，为您精准匹配最佳穿搭趋势...");
+            return fallback;
         } catch (Exception e) {
             log.error("AI 推荐失败: {}", e.getMessage());
             AiRecommendationResult fallback = new AiRecommendationResult();
-            fallback.setOutfitIds(Arrays.asList());
-            fallback.setReasoning("抱歉，专属AI暂时小憩中，你可以看看热门推荐哦。");
+            fallback.setOutfitIds(java.util.Collections.emptyList());
+            fallback.setReasoning("专属 AI 顾问暂时小憩中，已为您同步调取社区当前高度关注的校园穿搭灵感。");
             return fallback;
         }
     }
@@ -207,5 +242,31 @@ public class AiServiceImpl implements AiService {
             e.printStackTrace();
         }
         return personImageUrl;
+    }
+
+    /**
+     * 从 AI 回复文本中提取 JSON 内容。
+     * 支持 ```json...``` 代码块和普通 {} 两种格式。
+     */
+    private String extractJson(String content) {
+        int mdStart = content.indexOf("```json");
+        if (mdStart != -1) {
+            content = content.substring(mdStart + 7);
+            int mdEnd = content.lastIndexOf("```");
+            if (mdEnd != -1) content = content.substring(0, mdEnd);
+            return content.trim();
+        }
+        int codeStart = content.indexOf("```");
+        if (codeStart != -1) {
+            content = content.substring(codeStart + 3);
+            int codeEnd = content.lastIndexOf("```");
+            if (codeEnd != -1) content = content.substring(0, codeEnd);
+            return content.trim();
+        }
+        // 直接提取 {}
+        int start = content.indexOf("{");
+        int end = content.lastIndexOf("}");
+        if (start != -1 && end != -1) return content.substring(start, end + 1);
+        return content.trim();
     }
 }

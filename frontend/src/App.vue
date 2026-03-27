@@ -14,6 +14,7 @@ const username = computed(() => userStore.userInfo?.username || '')
 const avatar = computed(() => userStore.userInfo?.avatar || '')
 const userId = computed(() => userStore.userInfo?.userId)
 const isAdmin = computed(() => userStore.userInfo?.role === 'ADMIN')
+const isAuthPage = computed(() => ['/login', '/register'].includes(route.path))
 
 const navItems = [
   { label: '首页', path: '/', icon: Sunny },
@@ -32,7 +33,7 @@ const logout = () => {
 <template>
   <div id="app" class="flex flex-col min-h-screen bg-background">
     <!-- Navbar -->
-    <header class="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+    <header v-if="!isAuthPage" class="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
       <nav class="container mx-auto px-4 h-16 flex items-center justify-between">
         <div class="flex items-center gap-8">
           <router-link to="/" class="flex items-center gap-2 hover:opacity-80 transition-opacity">
@@ -86,7 +87,7 @@ const logout = () => {
       </RouterView>
     </main>
 
-    <footer class="border-t py-6 bg-secondary/50">
+    <footer v-if="!isAuthPage" class="border-t py-6 bg-secondary/50">
       <div class="container mx-auto px-4 text-center text-sm text-muted-foreground">
         © 2026 Campus Outfit. 面向校园的智能穿搭与潮流社区。
       </div>

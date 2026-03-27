@@ -53,8 +53,8 @@ const router = createRouter({
 })
 
 router.beforeEach((to, _from, next) => {
-  const token = localStorage.getItem('token')
-  const userInfoStr = localStorage.getItem('userInfo')
+  const token = sessionStorage.getItem('token')
+  const userInfoStr = sessionStorage.getItem('userInfo')
   const role = userInfoStr ? JSON.parse(userInfoStr).role : null
 
   // 未登录用户，非登录/注册页则跳转至 /login

@@ -1,11 +1,13 @@
 <script setup lang="ts">
 import { ref, onMounted, computed } from 'vue'
 import MasonryGallery from '../components/MasonryGallery.vue'
-import { ElMessage, ElScrollbar } from 'element-plus'
+import { ElMessage, ElScrollbar, ElMessageBox } from 'element-plus'
 import { Loading } from '@element-plus/icons-vue'
 import { getCommunityFeed, getHotTopics, getFollowingFeed } from '../api/community'
-import { likeOutfit } from '../api/interaction'
+import { likeOutfit, unlikeOutfit, favoriteOutfit, unfavoriteOutfit } from '../api/interaction'
+import { deleteOutfit } from '../api/outfit'
 import { useUserStore } from '@/stores/user'
+import { useRouter } from 'vue-router'
 
 const activeTab = ref('recommend')
 const topics = ref<any[]>([])
@@ -16,7 +18,8 @@ const noMore = ref(false)
 const page = ref(1)
 
 const userStore = useUserStore()
-const currentUserId = computed(() => userStore.userInfo?.id || userStore.userInfo?.userId || 1)
+const router = useRouter()
+const currentUserId = computed(() => userStore.userInfo?.id || userStore.userInfo?.userId || null)
 
 const loadTopics = async () => {
   try {
@@ -51,7 +54,8 @@ const loadData = async (reset = true) => {
         page: page.value, 
         size: 10, 
         sortBy,
-        topicId: selectedTopicId.value 
+        topicId: selectedTopicId.value,
+        currentUserId: currentUserId.value
       })
     }
     if (res && res.records) {
@@ -93,12 +97,67 @@ const handleTopicSelect = (id: number | null) => {
 }
 
 const handleLike = async (item: any) => {
+  if (!userStore.token) {
+    ElMessage.warning('请登录后再参与互动')
+    router.push('/login')
+    return
+  }
   try {
-    await likeOutfit(item.id, currentUserId.value)
-    item.likeCount = (item.likeCount || 0) + 1
-    ElMessage({ message: '点赞成功！', type: 'success', grouping: true })
+    if (item.liked) {
+      await unlikeOutfit(item.id, currentUserId.value!)
+      item.likeCount = Math.max(0, (item.likeCount || 0) - 1)
+      item.liked = false
+    } else {
+      await likeOutfit(item.id, currentUserId.value!)
+      item.likeCount = (item.likeCount || 0) + 1
+      item.liked = true
+      ElMessage({ message: '点赞成功！', type: 'success', grouping: true })
+    }
   } catch (error: any) {
-    ElMessage.error(error.message || '点赞失败')
+    ElMessage.error(error.message || '操作失败')
+  }
+}
+
+const handleFavorite = async (item: any) => {
+  if (!userStore.token) {
+    ElMessage.warning('请登录后再参与互动')
+    router.push('/login')
+    return
+  }
+  try {
+    if (item.favorited) {
+      await unfavoriteOutfit(item.id, currentUserId.value!)
+      item.favCount = Math.max(0, (item.favCount || 0) - 1)
+      item.favorited = false
+    } else {
+      await favoriteOutfit(item.id, currentUserId.value!)
+      item.favCount = (item.favCount || 0) + 1
+      item.favorited = true
+      ElMessage({ message: '收藏成功！', type: 'success', grouping: true })
+    }
+  } catch (error: any) {
+    ElMessage.error(error.message || '操作失败')
+  }
+}
+
+const handleDelete = async (id: number) => {
+  try {
+    await ElMessageBox.confirm('确定要删除这条穿搭吗？删除后不可恢复', '删除提示', {
+      confirmButtonText: '确定',
+      cancelButtonText: '取消',
+      type: 'warning',
+      customClass: 'glass-message-box'
+    })
+    
+    await deleteOutfit(id)
+    ElMessage.success('删除成功')
+    
+    // 从本地列表中移除
+    displayList.value = displayList.value.filter(o => o.id !== id)
+  } catch (error: any) {
+    if (error !== 'cancel') {
+      ElMessage.error(error.message || '删除失败，请稍后重试')
+    }
   }
 }
 </script>
@@ -180,6 +239,8 @@ const handleLike = async (item: any) => {
           v-else 
           :outfits="displayList" 
           @like="handleLike" 
+          @favorite="handleFavorite"
+          @delete="handleDelete"
         />
       </el-scrollbar>
 

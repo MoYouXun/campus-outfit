@@ -59,6 +59,14 @@ export function getMyOutfits(params: any) {
   })
 }
 
+export function getUserOutfits(userId: number | string, params: any) {
+  return request({
+    url: `/outfit/user/${userId}`,
+    method: 'get',
+    params
+  })
+}
+
 export function deleteOutfit(id: number | string) {
   return request({
     url: `/outfit/${id}`,

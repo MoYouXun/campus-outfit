@@ -36,6 +36,10 @@ export const useUserStore = defineStore('user', () => {
     sessionStorage.removeItem('token')
     sessionStorage.removeItem('userInfo')
     sessionStorage.removeItem('userLocation')
+    
+    // 防御性清除，避免之前的遗留配置干扰
+    localStorage.removeItem('token')
+    localStorage.removeItem('userInfo')
   }
 
   return { token, userInfo, userLocation, setToken, setUserInfo, setLocation, clearUser }

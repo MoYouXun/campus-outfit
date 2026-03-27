@@ -23,10 +23,11 @@ public class RecommendController {
             @RequestParam(required = false, defaultValue = "北京") String city,
             @RequestParam(required = false) Double latitude,
             @RequestParam(required = false) Double longitude,
-            @RequestParam(defaultValue = "1") int page, 
-            @RequestParam(defaultValue = "10") int size) {
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "20") int size,
+            @RequestParam(required = false) Long currentUserId) {
         try {
-            return Result.success(recommendService.recommendBySeason(city, latitude, longitude, page, size));
+            return Result.success(recommendService.recommendBySeason(city, latitude, longitude, page, size, currentUserId));
         } catch (Exception e) {
             e.printStackTrace();
             return Result.fail("获取推荐失败，请稍后重试");
@@ -36,10 +37,11 @@ public class RecommendController {
     @GetMapping("/occasion")
     public Result<IPage<OutfitVO>> recommendByOccasion(
             @RequestParam String occasion, 
-            @RequestParam(defaultValue = "1") int page, 
-            @RequestParam(defaultValue = "10") int size) {
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "20") int size,
+            @RequestParam(required = false) Long currentUserId) {
         try {
-            return Result.success(recommendService.recommendByOccasion(occasion, page, size));
+            return Result.success(recommendService.recommendByOccasion(occasion, page, size, currentUserId));
         } catch (Exception e) {
             e.printStackTrace();
             return Result.fail("获取推荐失败，请稍后重试");
@@ -49,8 +51,8 @@ public class RecommendController {
     @GetMapping("/style")
     public Result<IPage<OutfitVO>> recommendByStyle(
             @RequestHeader("Authorization") String token, 
-            @RequestParam(defaultValue = "1") int page, 
-            @RequestParam(defaultValue = "10") int size) {
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "20") int size) {
         try {
             Long userId = jwtUtils.getUserIdFromToken(token.replace("Bearer ", ""));
             return Result.success(recommendService.recommendByStyle(userId, page, size));
@@ -67,8 +69,8 @@ public class RecommendController {
             @RequestParam(required = false) Double latitude,
             @RequestParam(required = false) Double longitude,
             @RequestParam(required = false) String scenario,
-            @RequestParam(defaultValue = "1") int page, 
-            @RequestParam(defaultValue = "10") int size) {
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "20") int size) {
         try {
             Long userId = jwtUtils.getUserIdFromToken(token.replace("Bearer ", ""));
             return Result.success(recommendService.recommendPersonalized(userId, city, latitude, longitude, scenario, page, size));

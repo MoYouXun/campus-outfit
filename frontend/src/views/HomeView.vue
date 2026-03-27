@@ -13,13 +13,7 @@ const userStore = useUserStore()
 const topics = ref<any[]>([])
 const selectedTopic = ref<number | null>(null)
 
-// 模拟天气（用于首页展示）
-const mockWeather = ref({
-  temperature: '22°C',
-  weatherDesc: '晴朗',
-  dressIndex: '舒适',
-  suggestion: '温度非常宜人，短袖配合薄衬衫，或是裙装都非常适合校园活动。'
-})
+
 
 onMounted(async () => {
   try {
@@ -97,27 +91,7 @@ const handlePublish = async () => {
       </p>
     </div>
 
-    <!-- Weather Widget -->
-    <div class="w-full max-w-2xl mb-12 animate-slide-up">
-      <div class="glass border border-white/40 dark:border-white/10 rounded-2xl p-6 flex flex-col sm:flex-row items-center justify-between gap-6 relative overflow-hidden">
-        <div class="absolute right-0 top-0 w-32 h-32 bg-yellow-400/10 dark:bg-yellow-400/5 rounded-bl-full pointer-events-none"></div>
-        <div class="flex items-center gap-4">
-          <div class="w-16 h-16 rounded-full bg-gradient-to-br from-yellow-300 to-orange-400 flex-center shadow-lg shadow-orange-500/20 text-white">
-            <el-icon size="32"><Sunny /></el-icon>
-          </div>
-          <div>
-            <div class="flex items-baseline gap-2">
-              <span class="text-3xl font-bold tracking-tighter">{{ mockWeather.temperature }}</span>
-              <span class="text-lg font-medium text-muted-foreground">{{ mockWeather.weatherDesc }}</span>
-            </div>
-            <div class="text-sm font-semibold text-primary mt-1">穿衣指数：{{ mockWeather.dressIndex }}</div>
-          </div>
-        </div>
-        <div class="sm:w-1/2 text-sm text-foreground/80 leading-relaxed border-l-2 border-border pl-4">
-          {{ mockWeather.suggestion }}
-        </div>
-      </div>
-    </div>
+
 
     <!-- Main Content Grid -->
     <div class="w-full max-w-5xl grid grid-cols-1 lg:grid-cols-2 gap-8 items-start">

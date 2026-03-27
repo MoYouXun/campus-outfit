@@ -29,8 +29,6 @@ const handleLogin = () => {
         const res: any = await login(form)
         userStore.setToken(res.token)
         userStore.setUserInfo({ ...res })
-        localStorage.setItem('token', res.token)
-        localStorage.setItem('userInfo', JSON.stringify(res))
         ElMessage.success('欢迎回来！')
         router.push('/')
       } catch (e: any) {

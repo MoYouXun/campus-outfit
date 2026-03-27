@@ -234,14 +234,94 @@ public class AiServiceImpl implements AiService {
 
     @Override
     public String generateTryOnImage(String personImageUrl, String outfitImageUrl) {
-        log.info("[DEBUG] 开始处理 AI 换装预研模型...");
-        // 原型阶段：若需要真正调用图像 Inpainting，需替换为对应视觉API。目前暂以返回原图加延时作为概念模拟
+        log.info("[AI Try-On] 开始处理豆包 Seedream 5.0 换装，人像: {}, 衣服: {}", personImageUrl, outfitImageUrl);
+        
         try {
-            Thread.sleep(1500); 
-        } catch (InterruptedException e) {
-            e.printStackTrace();
+            // 1. 下载本地/远程图片并转为纯 Base64
+            String humanBase64 = getBase64FromUrl(personImageUrl);
+            String garmentBase64 = getBase64FromUrl(outfitImageUrl);
+
+            if (humanBase64.isEmpty() || garmentBase64.isEmpty()) {
+                throw new RuntimeException("图片读取失败，请检查图片路径");
+            }
+
+            // 2. 组装给火山引擎的 Payload
+            Map<String, Object> requestBody = new HashMap<>();
+            requestBody.put("model", "ep-20260327185802-n7wkt"); // 降级为 4.5 版本接入点
+            
+            // 极度保守的 Prompt，专门用来安抚风控网关
+            requestBody.put("prompt", "Virtual Try-On: 虚拟试穿测试。请将参考图片的衣服款式与颜色，平滑自然地替换到人物身上。严格要求：绝对保持人物原有的脸部、五官、发型、肤色和四肢姿势一模一样。画面严禁包含任何暴露、扭曲、或不适宜内容，严禁改变原背景。");
+            
+            // 必须带标准 Data URI 前缀，且指明为 jpeg
+            requestBody.put("image", "data:image/jpeg;base64," + humanBase64);
+            requestBody.put("reference_image", "data:image/jpeg;base64," + garmentBase64);
+            requestBody.put("n", 1);
+
+            HttpHeaders headers = new HttpHeaders();
+            headers.setContentType(MediaType.APPLICATION_JSON);
+            // 你的火山引擎 API Key
+            headers.setBearerAuth("2dd2e18c-9d00-4e1d-829b-e28ea619d74a");
+
+            HttpEntity<Map<String, Object>> entity = new HttpEntity<>(requestBody, headers);
+
+            log.info("[AI Try-On] 正在发送请求给火山引擎 API 网关...");
+            String apiUrl = "https://ark.cn-beijing.volces.com/api/v3/images/generations";
+            
+            // 3. 创建防超时的 RestTemplate (AI 生图需要时间，设置 90 秒超时)
+            org.springframework.http.client.SimpleClientHttpRequestFactory factory = new org.springframework.http.client.SimpleClientHttpRequestFactory();
+            factory.setConnectTimeout(30000);
+            factory.setReadTimeout(90000);
+            RestTemplate restTemplate = new RestTemplate(factory);
+
+            // 4. 执行调用
+            String responseStr = restTemplate.postForObject(apiUrl, entity, String.class);
+            log.info("[AI Try-On] 成功收到豆包网关返回: {}", responseStr);
+
+            JsonNode root = new com.fasterxml.jackson.databind.ObjectMapper().readTree(responseStr);
+            if (root.has("error")) {
+                throw new RuntimeException("火山API业务错误: " + root.path("error").toString());
+            }
+
+            // 5. 提取返回的图片
+            JsonNode dataNode = root.path("data").get(0);
+            if (dataNode.has("url")) {
+                return dataNode.get("url").asText();
+            } else if (dataNode.has("b64_json")) {
+                return "data:image/jpeg;base64," + dataNode.get("b64_json").asText();
+            }
+
+            return personImageUrl;
+        } catch (Exception e) {
+            log.error("[AI Try-On] 豆包换装服务执行异常", e);
+            throw new RuntimeException("豆包换装异常: " + e.getMessage());
         }
-        return personImageUrl;
+    }
+
+    // 新增私有辅助方法：专门用于下载图片转 Base64
+    // 纯净版：专门用于解析图片并转为 Base64，严禁修改 URL 破坏签名
+    private String getBase64FromUrl(String url) {
+        try {
+            log.info("[图片转换] 正在下载图片: {}", url);
+            if (url == null || url.trim().isEmpty()) return "";
+
+            // 1. 如果已经是 Base64，直接截取
+            if (url.startsWith("data:image")) {
+                return url.substring(url.indexOf(",") + 1);
+            }
+
+            // 2. 核心修复：绝对不能修改带有签名的 URL（不能替换 localhost），直接转为 URI 对象防止双重编码！
+            java.net.URI parsedUri = new java.net.URI(url);
+            byte[] bytes = new RestTemplate().getForObject(parsedUri, byte[].class);
+            
+            if (bytes != null && bytes.length > 0) {
+                log.info("[图片转换] 图片下载成功，体积: {} 字节", bytes.length);
+                return java.util.Base64.getEncoder().encodeToString(bytes);
+            }
+        } catch (Exception e) {
+            log.error("[图片转换致命异常] 无法下载图片: {} | 错误详情: {}", url, e.getMessage());
+            throw new RuntimeException("无法下载文件: " + url + "。错误: " + e.getMessage());
+        }
+        return "";
     }
 
     /**

@@ -19,9 +19,10 @@ const isAuthPage = computed(() => ['/login', '/register'].includes(route.path))
 const navItems = [
   { label: '首页', path: '/', icon: Sunny },
   { label: '社区', path: '/community', icon: Opportunity },
+  { label: 'AI 穿搭 PK', path: '/ai-pk', icon: TrendCharts },
+  { label: '魔法试衣间', path: '/ai-try-on', icon: MagicStick },
   { label: '推荐', path: '/recommend', icon: MagicStick },
-  { label: '排行', path: '/ranking', icon: TrendCharts },
-  { label: 'PK 大赛', path: '/ai-pk', icon: MagicStick }
+  { label: '排行', path: '/ranking', icon: TrendCharts }
 ]
 
 const logout = () => {

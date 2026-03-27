@@ -3,7 +3,7 @@ import { ref } from 'vue'
 import { Plus, MagicStick, Loading as IconLoading } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import { uploadWardrobeItem } from '@/api/wardrobe'
-import { generateTryOn } from '@/api/ai'
+import { aiTryOn } from '@/api/ai'
 
 // 响应式状态
 const humanImageUrl = ref('')
@@ -58,7 +58,7 @@ const handleTryOn = async () => {
   resultImageUrl.value = '' // 清除旧结果
 
   try {
-    const res: any = await generateTryOn({
+    const res: any = await aiTryOn({
       humanImageUrl: humanImageUrl.value,
       garmentImageUrl: garmentImageUrl.value,
       category: 'upper_body' // 默认上装，可扩展

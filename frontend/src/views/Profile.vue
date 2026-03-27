@@ -83,8 +83,8 @@ const handleTryOn = async () => {
   tryOnResultUrl.value = ''
   try {
     const res: any = await aiTryOn({
-      personImageUrl: personImageUrl.value,
-      outfitImageUrl: selectedOutfitUrl.value
+      humanImageUrl: personImageUrl.value,
+      garmentImageUrl: selectedOutfitUrl.value
     })
     tryOnResultUrl.value = res.data || res || personImageUrl.value
     ElMessage.success('魔法换装成功！')

@@ -105,6 +105,12 @@
             <artifactId>spring-security-test</artifactId>
             <scope>test</scope>
         </dependency>
+        <!-- Volcengine Java SDK -->
+        <dependency>
+            <groupId>com.volcengine</groupId>
+            <artifactId>volc-sdk-java</artifactId>
+            <version>1.0.263</version>
+        </dependency>
     </dependencies>
 
     <build>

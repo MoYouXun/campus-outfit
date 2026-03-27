@@ -3,6 +3,10 @@ package com.campus.outfit.service.impl;
 import com.campus.outfit.dto.AiAnalysisResult;
 import com.campus.outfit.dto.AiRecommendationResult;
 import com.campus.outfit.service.AiService;
+import com.volcengine.service.visual.IVisualService;
+import com.volcengine.service.visual.impl.VisualServiceImpl;
+import com.volcengine.service.visual.model.request.VisualProcessRequest;
+import com.volcengine.service.visual.model.response.VisualProcessResponse;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.beans.factory.annotation.Value;
@@ -49,7 +53,7 @@ public class AiServiceImpl implements AiService {
     public AiServiceImpl() {
         org.springframework.http.client.SimpleClientHttpRequestFactory factory = new org.springframework.http.client.SimpleClientHttpRequestFactory();
         factory.setConnectTimeout(15000); // 15s 连接超时
-        factory.setReadTimeout(60000);    // 60s 读取超时，防止大模型响应缓慢导致 EOF
+        factory.setReadTimeout(60000); // 60s 读取超时，防止大模型响应缓慢导致 EOF
         this.restTemplate = new RestTemplate(factory);
     }
 
@@ -70,17 +74,18 @@ public class AiServiceImpl implements AiService {
                 "2. colorTags (字符串列表): 主要配色，如[\"米色\", \"浅蓝\"]\n" +
                 "3. itemKeywords (字符串列表): 识别出的主要单品，如[\"针织开衫\", \"百褶裙\"]\n" +
                 "4. proportionSuggestion (字符串): 专业且亲切的穿搭/比例建议。\n" +
-                "例如: {\"styleTags\":[\"休闲\"], \"colorTags\":[\"白色\"], \"itemKeywords\":[\"T恤\"], \"proportionSuggestion\": \"建议将衣角塞进裤腰。\"}。\n" +
+                "例如: {\"styleTags\":[\"休闲\"], \"colorTags\":[\"白色\"], \"itemKeywords\":[\"T恤\"], \"proportionSuggestion\": \"建议将衣角塞进裤腰。\"}。\n"
+                +
                 "你的回答必须并且只能是一个合法的JSON字符串，不要包含 Markdown 标记格式或其他描述文字。");
 
         // 构建 user message (支持多模态, 图片URL和文字)
         Map<String, Object> userMessage = new HashMap<>();
         userMessage.put("role", "user");
-        
+
         Map<String, Object> textContent = new HashMap<>();
         textContent.put("type", "text");
         textContent.put("text", "请分析这张图片里的穿搭。");
-        
+
         Map<String, Object> imageContent = new HashMap<>();
         imageContent.put("type", "image_url");
         Map<String, String> imageUrlMap = new HashMap<>();
@@ -102,9 +107,9 @@ public class AiServiceImpl implements AiService {
             System.out.println("[DEBUG] 正在调用AI服务...");
             String responseStr = restTemplate.postForObject(url, entity, String.class);
             System.out.println("[DEBUG] AI服务响应: " + responseStr);
-            
+
             JsonNode root = objectMapper.readTree(responseStr);
-            
+
             // 检查 API 是否返回了错误信息
             if (root.has("error")) {
                 String errorMsg = root.path("error").path("message").asText();
@@ -162,7 +167,8 @@ public class AiServiceImpl implements AiService {
         try {
             Object cached = redisTemplate.opsForValue().get(cacheKey);
             if (cached != null) {
-                if (cached instanceof AiRecommendationResult) return (AiRecommendationResult) cached;
+                if (cached instanceof AiRecommendationResult)
+                    return (AiRecommendationResult) cached;
                 return objectMapper.convertValue(cached, AiRecommendationResult.class);
             }
         } catch (Exception e) {
@@ -181,7 +187,8 @@ public class AiServiceImpl implements AiService {
         systemMessage.put("content", "你是一位专业的校园穿搭顾问。请根据用户提供的天气、场景和私服信息，返回一个严格格式为JSON的推荐结果，包含以下字段：\n" +
                 "1. outfitIds (整数数组): 优先在用户提供的私人衣橱列表中挑选出最合适的衣服组合ID（如 [1, 5, 8]）。私人衣橱为空或没有衣服合适时，必须返回空数组 []。\n" +
                 "2. reasoning (字符串): 你给出的穿搭解析或单品搭配指南，请充分体现针对场景和当天天气的关怀，字数约60字。\n" +
-                "3. searchTags (字符串数组): 仅当 outfitIds 为空时，你需要推断用户需要什么样风格的衣服（如 [\"风衣\", \"休闲\", \"浅色\"]）。最多提供3个精确关联标签。\n" +
+                "3. searchTags (字符串数组): 仅当 outfitIds 为空时，你需要推断用户需要什么样风格的衣服（如 [\"风衣\", \"休闲\", \"浅色\"]）。最多提供3个精确关联标签。\n"
+                +
                 "回答仅限合法JSON。");
 
         Map<String, Object> userMessage = new HashMap<>();
@@ -200,12 +207,14 @@ public class AiServiceImpl implements AiService {
                 try {
                     String responseStr = restTemplate.postForObject(url, entity, String.class);
                     JsonNode root = objectMapper.readTree(responseStr);
-                    if (root.has("error")) throw new RuntimeException(root.path("error").path("message").asText());
+                    if (root.has("error"))
+                        throw new RuntimeException(root.path("error").path("message").asText());
 
                     String content = root.path("choices").path(0).path("message").path("content").asText();
                     int start = content.indexOf("{");
                     int end = content.lastIndexOf("}");
-                    if (start != -1 && end != -1) content = content.substring(start, end + 1);
+                    if (start != -1 && end != -1)
+                        content = content.substring(start, end + 1);
                     return objectMapper.readValue(content, AiRecommendationResult.class);
                 } catch (Exception ex) {
                     throw new RuntimeException(ex);
@@ -234,66 +243,62 @@ public class AiServiceImpl implements AiService {
 
     @Override
     public String generateTryOnImage(String personImageUrl, String outfitImageUrl) {
-        log.info("[AI Try-On] 开始处理豆包 Seedream 5.0 换装，人像: {}, 衣服: {}", personImageUrl, outfitImageUrl);
-        
+        log.info("[AI Try-On] 切入火山引擎专用图片换装 V2 引擎！人像: {}, 衣服: {}", personImageUrl, outfitImageUrl);
         try {
-            // 1. 下载本地/远程图片并转为纯 Base64
+            // 1. 获取纯净的 Base64（去掉 data:image 前缀），这是专用 CV 接口的严格要求
             String humanBase64 = getBase64FromUrl(personImageUrl);
             String garmentBase64 = getBase64FromUrl(outfitImageUrl);
 
-            if (humanBase64.isEmpty() || garmentBase64.isEmpty()) {
-                throw new RuntimeException("图片读取失败，请检查图片路径");
+            if (humanBase64 == null || humanBase64.isEmpty() || garmentBase64 == null || garmentBase64.isEmpty()) {
+                throw new RuntimeException("底层图片读取失败，请检查存储链路");
             }
 
-            // 2. 组装给火山引擎的 Payload
-            Map<String, Object> requestBody = new HashMap<>();
-            requestBody.put("model", "ep-20260327185802-n7wkt"); // 降级为 4.5 版本接入点
+            // 2. 初始化火山视觉服务客户端并进行 AK/SK 鉴权
+            IVisualService visualService = VisualServiceImpl.getInstance();
+            visualService.setAccessKey("AKLTZTc0NmY5NzA0Yjc0NGZlZDljOTNmMTg3ZWRjOTU0NzU");
+            visualService.setSecretKey("TURVNE5qSTVNbUZtWkdNM05EUTVNR0V4TmpZNE5UWmpOV1l5TWpFeE1UVQ==");
+
+            // 3. 根据官方接口文档构造 JSON Payload
+            Map<String, Object> reqBody = new HashMap<>();
+            // 内部路由键，指定调用 DressingDiffusionV2 换装模型
+            reqBody.put("req_key", "dressing_diffusionV2");
+            // 严格按顺序传入：[模特图, 服装图]
+            reqBody.put("binary_data_base64", Arrays.asList(humanBase64, garmentBase64));
             
-            // 极度保守的 Prompt，专门用来安抚风控网关
-            requestBody.put("prompt", "Virtual Try-On: 虚拟试穿测试。请将参考图片的衣服款式与颜色，平滑自然地替换到人物身上。严格要求：绝对保持人物原有的脸部、五官、发型、肤色和四肢姿势一模一样。画面严禁包含任何暴露、扭曲、或不适宜内容，严禁改变原背景。");
+            // 服装类型配置（当前默认 full 代表单件衣服，如果后续增加分类可改为 upper 或 bottom）
+            Map<String, Object> garment = new HashMap<>();
+            garment.put("type", "full"); 
+            reqBody.put("garment", garment);
+
+            // 4. 发起 CV Process 请求
+            VisualProcessRequest req = new VisualProcessRequest();
+            req.setAction("cvProcess"); 
+            req.setVersion("2022-08-31");
             
-            // 必须带标准 Data URI 前缀，且指明为 jpeg
-            requestBody.put("image", "data:image/jpeg;base64," + humanBase64);
-            requestBody.put("reference_image", "data:image/jpeg;base64," + garmentBase64);
-            requestBody.put("n", 1);
+            ObjectMapper mapper = new ObjectMapper();
+            req.setBody(mapper.writeValueAsString(reqBody));
 
-            HttpHeaders headers = new HttpHeaders();
-            headers.setContentType(MediaType.APPLICATION_JSON);
-            // 你的火山引擎 API Key
-            headers.setBearerAuth("2dd2e18c-9d00-4e1d-829b-e28ea619d74a");
-
-            HttpEntity<Map<String, Object>> entity = new HttpEntity<>(requestBody, headers);
-
-            log.info("[AI Try-On] 正在发送请求给火山引擎 API 网关...");
-            String apiUrl = "https://ark.cn-beijing.volces.com/api/v3/images/generations";
+            log.info("[AI Try-On] 正在通过 Volcengine SDK 调用 V2 换装核心算力...");
+            VisualProcessResponse response = visualService.cvProcess(req);
             
-            // 3. 创建防超时的 RestTemplate (AI 生图需要时间，设置 90 秒超时)
-            org.springframework.http.client.SimpleClientHttpRequestFactory factory = new org.springframework.http.client.SimpleClientHttpRequestFactory();
-            factory.setConnectTimeout(30000);
-            factory.setReadTimeout(90000);
-            RestTemplate restTemplate = new RestTemplate(factory);
-
-            // 4. 执行调用
-            String responseStr = restTemplate.postForObject(apiUrl, entity, String.class);
-            log.info("[AI Try-On] 成功收到豆包网关返回: {}", responseStr);
-
-            JsonNode root = new com.fasterxml.jackson.databind.ObjectMapper().readTree(responseStr);
-            if (root.has("error")) {
-                throw new RuntimeException("火山API业务错误: " + root.path("error").toString());
+            // 5. 精准解析返回的合成图 Base64
+            if (response != null && response.getCode() == 10000) {
+                // 安全地将 Object 转换为 JsonNode 解析结构
+                JsonNode dataNode = mapper.valueToTree(response.getData());
+                String resultBase64 = dataNode.path("binary_data_base64").get(0).asText();
+                log.info("[AI Try-On] V2 换装计算完美结束！");
+                
+                // 拼接前端可识别的 Data URI scheme
+                return "data:image/jpeg;base64," + resultBase64;
+            } else {
+                String errorMsg = response != null ? response.getMessage() : "Unknown Error";
+                log.error("火山专用换装 API 调用失败: {}", errorMsg);
+                throw new RuntimeException("专用换装失败: " + errorMsg);
             }
 
-            // 5. 提取返回的图片
-            JsonNode dataNode = root.path("data").get(0);
-            if (dataNode.has("url")) {
-                return dataNode.get("url").asText();
-            } else if (dataNode.has("b64_json")) {
-                return "data:image/jpeg;base64," + dataNode.get("b64_json").asText();
-            }
-
-            return personImageUrl;
         } catch (Exception e) {
-            log.error("[AI Try-On] 豆包换装服务执行异常", e);
-            throw new RuntimeException("豆包换装异常: " + e.getMessage());
+            log.error("[AI Try-On] 专用换装服务严重异常", e);
+            throw new RuntimeException("换装引擎异常: " + e.getMessage());
         }
     }
 
@@ -302,7 +307,8 @@ public class AiServiceImpl implements AiService {
     private String getBase64FromUrl(String url) {
         try {
             log.info("[图片转换] 正在下载图片: {}", url);
-            if (url == null || url.trim().isEmpty()) return "";
+            if (url == null || url.trim().isEmpty())
+                return "";
 
             // 1. 如果已经是 Base64，直接截取
             if (url.startsWith("data:image")) {
@@ -312,7 +318,7 @@ public class AiServiceImpl implements AiService {
             // 2. 核心修复：绝对不能修改带有签名的 URL（不能替换 localhost），直接转为 URI 对象防止双重编码！
             java.net.URI parsedUri = new java.net.URI(url);
             byte[] bytes = new RestTemplate().getForObject(parsedUri, byte[].class);
-            
+
             if (bytes != null && bytes.length > 0) {
                 log.info("[图片转换] 图片下载成功，体积: {} 字节", bytes.length);
                 return java.util.Base64.getEncoder().encodeToString(bytes);
@@ -333,20 +339,23 @@ public class AiServiceImpl implements AiService {
         if (mdStart != -1) {
             content = content.substring(mdStart + 7);
             int mdEnd = content.lastIndexOf("```");
-            if (mdEnd != -1) content = content.substring(0, mdEnd);
+            if (mdEnd != -1)
+                content = content.substring(0, mdEnd);
             return content.trim();
         }
         int codeStart = content.indexOf("```");
         if (codeStart != -1) {
             content = content.substring(codeStart + 3);
             int codeEnd = content.lastIndexOf("```");
-            if (codeEnd != -1) content = content.substring(0, codeEnd);
+            if (codeEnd != -1)
+                content = content.substring(0, codeEnd);
             return content.trim();
         }
         // 直接提取 {}
         int start = content.indexOf("{");
         int end = content.lastIndexOf("}");
-        if (start != -1 && end != -1) return content.substring(start, end + 1);
+        if (start != -1 && end != -1)
+            return content.substring(start, end + 1);
         return content.trim();
     }
 }

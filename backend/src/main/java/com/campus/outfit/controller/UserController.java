@@ -8,6 +8,7 @@ import com.campus.outfit.service.UserService;
 import com.campus.outfit.utils.Result;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
+import com.campus.outfit.dto.UserUpdateDTO;
 import com.campus.outfit.vo.UserDetailVO;
 import com.campus.outfit.service.FollowService;
 
@@ -50,11 +51,12 @@ public class UserController {
     }
 
     @PutMapping("/profile")
-    public Result<String> updateProfile(@RequestBody User user, @RequestHeader("Authorization") String token) {
+    public Result<String> updateProfile(@RequestBody UserUpdateDTO userUpdateDTO, @RequestHeader("Authorization") String token) {
         Long userId = jwtUtils.getUserIdFromToken(token.replace("Bearer ", ""));
-        user.setId(userId);
-        return userService.updateProfile(user);
+        return userService.updateProfile(userId, userUpdateDTO);
     }
+
+
 
     @PostMapping("/follow/{id}")
     public Result<String> follow(@PathVariable Long id, @RequestHeader("Authorization") String token) {

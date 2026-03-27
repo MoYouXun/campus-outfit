@@ -5,6 +5,7 @@ import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.campus.outfit.dto.UserAuthRequest;
+import com.campus.outfit.dto.UserUpdateDTO;
 import com.campus.outfit.entity.Follow;
 import com.campus.outfit.entity.User;
 import com.campus.outfit.mapper.FollowMapper;
@@ -18,9 +19,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
-import java.util.stream.Collectors;
 
 @Service
 public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements UserService {
@@ -82,10 +81,16 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
     }
 
     @Override
-    public Result<String> updateProfile(User user) {
-        if (user.getId() == null) {
-            return Result.fail("用户ID不能为空");
-        }
+    public Result<String> updateProfile(Long userId, UserUpdateDTO dto) {
+        User user = new User();
+        user.setId(userId);
+        
+        // 手动映射允许修改的字段，防止 role, fanCount 等敏感字段被注入
+        if (dto.getNickname() != null) user.setNickname(dto.getNickname());
+        if (dto.getAvatar() != null) user.setAvatar(dto.getAvatar());
+        if (dto.getBio() != null) user.setBio(dto.getBio());
+        if (dto.getGender() != null) user.setGender(dto.getGender());
+        
         updateById(user);
         return Result.success("修改成功");
     }
@@ -142,29 +147,13 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
 
     @Override
     public IPage<User> getFollowList(Long userId, int page, int size) {
-        List<Follow> follows = followMapper.selectList(new LambdaQueryWrapper<Follow>()
-                .eq(Follow::getFollowerId, userId));
-        List<Long> followeeIds = follows.stream().map(Follow::getFolloweeId).collect(Collectors.toList());
-        
         Page<User> userPage = new Page<>(page, size);
-        if (followeeIds.isEmpty()) {
-            return userPage;
-        }
-        
-        return page(userPage, new LambdaQueryWrapper<User>().in(User::getId, followeeIds));
+        return followMapper.selectFollowUserPage(userPage, userId);
     }
 
     @Override
     public IPage<User> getFanList(Long userId, int page, int size) {
-        List<Follow> follows = followMapper.selectList(new LambdaQueryWrapper<Follow>()
-                .eq(Follow::getFolloweeId, userId));
-        List<Long> followerIds = follows.stream().map(Follow::getFollowerId).collect(Collectors.toList());
-        
         Page<User> userPage = new Page<>(page, size);
-        if (followerIds.isEmpty()) {
-            return userPage;
-        }
-        
-        return page(userPage, new LambdaQueryWrapper<User>().in(User::getId, followerIds));
+        return followMapper.selectFanUserPage(userPage, userId);
     }
 }

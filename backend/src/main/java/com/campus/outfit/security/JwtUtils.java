@@ -4,19 +4,28 @@ import com.campus.outfit.entity.User;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.security.Keys;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
+import jakarta.annotation.PostConstruct;
 import javax.crypto.SecretKey;
 import java.util.Date;
 
 @Component
 public class JwtUtils {
 
-    // JWT Expiration (e.g. 7 days)
-    private static final long EXPIRE_TIME = 7 * 24 * 60 * 60 * 1000L;
-    // 固定的随机密钥字符串，实际生产应从配置获取并保证足够长度
-    private static final String SECRET_STRING = "CampusOutfitSuperSecretKeyForJwtAuthenticationWhichNeedsToBeLongEnough";
-    private final SecretKey key = Keys.hmacShaKeyFor(SECRET_STRING.getBytes());
+    @Value("${app.jwt.expire-time}")
+    private long expireTime;
+
+    @Value("${app.jwt.secret}")
+    private String secret;
+
+    private SecretKey key;
+
+    @PostConstruct
+    public void init() {
+        this.key = Keys.hmacShaKeyFor(secret.getBytes());
+    }
 
     /**
      * 生成 JWT Token
@@ -27,7 +36,7 @@ public class JwtUtils {
                 .claim("userId", user.getId())
                 .claim("role", user.getRole().name())
                 .issuedAt(new Date())
-                .expiration(new Date(System.currentTimeMillis() + EXPIRE_TIME))
+                .expiration(new Date(System.currentTimeMillis() + expireTime))
                 .signWith(key)
                 .compact();
     }

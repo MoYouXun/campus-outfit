@@ -1,5 +1,8 @@
 import request from '@/utils/request'
 
-export const aiTryOn = (data: { personImageUrl: string, outfitImageUrl: string }) => {
-  return request.post('/ai/try-on', data)
+/**
+ * 发起两套穿搭 AI PK
+ */
+export async function pkOutfits(data: { imageAUrl: string; imageBUrl: string; scene: string }) {
+  return request.post('/ai/decision/pk', data)
 }

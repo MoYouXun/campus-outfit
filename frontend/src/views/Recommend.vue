@@ -513,13 +513,18 @@ onUnmounted(() => {
         </div>
       </div>
 
-      <div
+      <el-scrollbar
         v-if="outfits.length > 0"
-        v-infinite-scroll="loadMore"
-        :infinite-scroll-disabled="loadingMore || !hasMore"
-        :infinite-scroll-distance="100"
-        class="pb-20"
+        height="max(600px, calc(100vh - 250px))"
+        class="recommend-scrollbar"
       >
+        <div
+          v-infinite-scroll="loadMore"
+          :infinite-scroll-disabled="loadingMore || !hasMore"
+          :infinite-scroll-distance="100"
+          :infinite-scroll-immediate="false"
+          class="pb-20"
+        >
         <!-- 今日首选 / 英雄卡片 (仅在第一页显示) -->
         <div v-if="currentPage <= 2 && featuredOutfit" class="mb-12 animate-slide-up">
           <div class="relative group cursor-pointer" @click="router.push(`/outfit/${featuredOutfit.id}`)">
@@ -599,6 +604,7 @@ onUnmounted(() => {
           </template>
         </div>
       </div>
+      </el-scrollbar>
       <div v-else class="flex flex-col items-center justify-center py-32 bg-secondary/20 rounded-3xl border border-dashed border-border">
         <el-empty description="暂时没有找到相关穿搭，请尝试更换场景词喔~" />
       </div>
@@ -610,6 +616,10 @@ onUnmounted(() => {
 .recommend-container {
   background: radial-gradient(circle at 0% 0%, rgba(var(--primary-rgb), 0.03) 0%, transparent 50%),
               radial-gradient(circle at 100% 100%, rgba(var(--primary-rgb), 0.03) 0%, transparent 50%);
+}
+
+.recommend-scrollbar {
+  @apply pr-4;
 }
 
 .weather-card {

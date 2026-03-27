@@ -25,6 +25,11 @@ const router = createRouter({
       component: () => import('@/views/Ranking.vue')
     },
     {
+      path: '/ai-pk',
+      name: 'AiPK',
+      component: () => import('../views/OutfitPK.vue')
+    },
+    {
       path: '/profile/:id',
       name: 'profile',
       component: () => import('@/views/Profile.vue')

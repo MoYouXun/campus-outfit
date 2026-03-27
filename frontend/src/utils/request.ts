@@ -1,20 +1,27 @@
 import axios from 'axios'
-import type { AxiosInstance, AxiosRequestConfig, AxiosResponse } from 'axios'
+import type { AxiosInstance, InternalAxiosRequestConfig, AxiosResponse } from 'axios'
 
 // 创建 axios 实例
 const service: AxiosInstance = axios.create({
-  baseURL: import.meta.env.VITE_API_BASE_URL || '/api',
+  baseURL: (import.meta as any).env.VITE_API_BASE_URL || '/api',
   timeout: 60000 // 统一调整为 60s，以适配后端大模型的响应耗时
 })
 
 // 请求拦截器
 service.interceptors.request.use(
-  (config: AxiosRequestConfig) => {
+  (config: InternalAxiosRequestConfig) => {
     // 从 sessionStorage 中获取 token（恢复单标签页会话隔离）
     const token = sessionStorage.getItem('token')
     // 对于不需要认证的接口（如登录和注册），不添加 Authorization 请求头
-    const noAuthPaths = ['/api/user/login', '/api/user/register', '/user/login', '/user/register', '/api/weather/now', '/weather/now', '/api/recommend/occasion', '/recommend/occasion', '/api/recommend/season', '/recommend/season']
-    const isNoAuthPath = noAuthPaths.some(path => config.url?.includes(path))
+    const noAuthPaths = [
+      '/user/login', 
+      '/user/register', 
+      '/weather/now', 
+      '/recommend/occasion', 
+      '/recommend/season',
+      '/recommend/style'
+    ]
+    const isNoAuthPath = noAuthPaths.some(path => config.url === path || config.url?.startsWith(path))
     
     if (token && !isNoAuthPath) {
       // 如果 token 存在且不是无需认证的接口，添加到请求头

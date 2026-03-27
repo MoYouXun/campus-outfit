@@ -19,6 +19,7 @@ public class AiDecisionServiceImpl implements AiDecisionService {
 
     @Override
     public OutfitPkResponse pkOutfits(OutfitPkRequest request, Long userId) {
+        log.info("[AI PK] 核心提示词：{}", PK_SYSTEM_PROMPT);
         log.info("[AI PK] 正在组装 Prompt 并调用大模型进行 A/B PK...");
         log.info("[AI PK] 场景：{} , 方案A：{} , 方案B：{}", 
                 request.getScene(), request.getImageAUrl(), request.getImageBUrl());

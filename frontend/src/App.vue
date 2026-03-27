@@ -20,7 +20,8 @@ const navItems = [
   { label: '首页', path: '/', icon: Sunny },
   { label: '社区', path: '/community', icon: Opportunity },
   { label: '推荐', path: '/recommend', icon: MagicStick },
-  { label: '排行', path: '/ranking', icon: TrendCharts }
+  { label: '排行', path: '/ranking', icon: TrendCharts },
+  { label: 'PK 大赛', path: '/ai-pk', icon: MagicStick }
 ]
 
 const logout = () => {

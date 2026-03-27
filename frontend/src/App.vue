@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { RouterView, useRouter, useRoute } from 'vue-router'
-import { computed } from 'vue'
+import { computed, onMounted, onUnmounted } from 'vue'
 import { useUserStore } from '@/stores/user'
 import { ElMessage, ElIcon } from 'element-plus'
 import { MagicStick, TrendCharts, Opportunity, Sunny, UserFilled } from '@element-plus/icons-vue'
@@ -8,6 +8,21 @@ import { MagicStick, TrendCharts, Opportunity, Sunny, UserFilled } from '@elemen
 const router = useRouter()
 const route = useRoute()
 const userStore = useUserStore()
+
+const handleStorageChange = (event: StorageEvent) => {
+  if (event.key === 'token') {
+    // 检测到其他标签页 Token 变化，强制刷新以同步状态
+    window.location.reload()
+  }
+}
+
+onMounted(() => {
+  window.addEventListener('storage', handleStorageChange)
+})
+
+onUnmounted(() => {
+  window.removeEventListener('storage', handleStorageChange)
+})
 
 const isLoggedIn = computed(() => !!userStore.token)
 const username = computed(() => userStore.userInfo?.username || '')

@@ -59,13 +59,15 @@ export function getMyOutfits(params: any) {
   })
 }
 
-export function getUserOutfits(userId: number | string, params: any) {
+export function getUserOutfits(params: { userId: number | string; page?: number; size?: number }) {
+  const { userId, ...queryParams } = params
   return request({
     url: `/outfit/user/${userId}`,
     method: 'get',
-    params
+    params: queryParams
   })
 }
+
 
 export function deleteOutfit(id: number | string) {
   return request({

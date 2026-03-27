@@ -33,10 +33,10 @@ const loadUser = async () => {
     if (isCurrentUser.value) {
       outfitsRes = await getMyOutfits({ page: 1, size: 20 })
     } else {
-      outfitsRes = await getUserOutfits(userId, { 
+      outfitsRes = await getUserOutfits({ 
+        userId: userId,
         page: 1, 
-        size: 20, 
-        currentUserId: currentUserId.value 
+        size: 20 
       })
     }
     outfits.value = outfitsRes.records || []

@@ -50,11 +50,11 @@ public class OutfitController {
     @GetMapping("/user/{userId}")
     public Result<IPage<Outfit>> getUserOutfits(@PathVariable Long userId,
                                                @RequestParam(defaultValue = "1") int page,
-                                               @RequestParam(defaultValue = "10") int size,
-                                               @RequestParam(defaultValue = "latest") String sortBy,
-                                               @RequestParam(required = false) Long currentUserId) {
-        return Result.success(outfitService.getPublicOutfits(page, size, sortBy, null, userId, currentUserId));
+                                               @RequestParam(defaultValue = "10") int size) {
+        return Result.success(outfitService.getPublicOutfits(page, size, "latest", null, userId, null));
     }
+
+
 
     @DeleteMapping("/{id}")
     public Result<String> deleteOutfit(@PathVariable Long id, @RequestHeader("Authorization") String token) {

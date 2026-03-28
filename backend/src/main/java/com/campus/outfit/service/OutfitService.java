@@ -14,9 +14,10 @@ public interface OutfitService extends IService<Outfit> {
     Result<AiAnalysisResult> uploadAndAnalyze(List<MultipartFile> files);
     Result<String> publishOutfit(Outfit outfit);
     IPage<Outfit> getPublicOutfits(int page, int size);
-    IPage<Outfit> getFollowingOutfits(List<Long> followingIds, int page, int size, Long currentUserId);
+    IPage<Outfit> getFollowingOutfits(java.util.List<Long> followingIds, int page, int size, Long currentUserId);
     IPage<Outfit> getMyOutfits(Long userId, int page, int size);
     Result<String> deleteOutfit(Long id, Long userId);
     Result<String> incrementViewCount(Long id);
     void refreshOutfitUrls(Outfit outfit);
+    List<com.campus.outfit.vo.OutfitVO> getMyPrivateOutfits(Long userId);
 }

@@ -42,7 +42,7 @@ const handleUpload = async (data: any) => {
   }
 }
 
-const handlePublish = async () => {
+const handlePublish = async (status: 'PUBLISHED' | 'PRIVATE') => {
   if (!aiResult.value) return
   
   // 增加登录校验
@@ -62,15 +62,22 @@ const handlePublish = async () => {
       colorTags: aiResult.value.colorTags,
       itemKeywords: aiResult.value.itemKeywords,
       topicId: selectedTopic.value,
-      status: 'PUBLISHED',
-      isPublic: true
+      status: status
     }
     await publishOutfit(data)
-    ElMessage.success('发布成功')
-    router.push('/community')
+    
+    // 根据状态给提示
+    if (status === 'PUBLISHED') {
+      ElMessage.success('已发布至社区')
+      router.push('/community')
+    } else {
+      ElMessage.success('已保存至私人衣橱')
+      // 私人保存后通常保留在当前页或清除结果以便下一次，这里选择清除
+      aiResult.value = null
+    }
   } catch (e: any) {
     console.error('发布失败错误:', e)
-    ElMessage.error(e.message || '发布失败')
+    ElMessage.error(e.message || '操作失败')
   } finally {
     publishing.value = false
   }
@@ -149,8 +156,9 @@ const handlePublish = async () => {
             </div>
             
             <div class="flex gap-3 pt-2">
-              <el-button @click="aiResult = null" round class="w-full">重新上传</el-button>
-              <el-button type="primary" :loading="publishing" @click="handlePublish" class="w-full" round>发布至社区</el-button>
+              <el-button @click="aiResult = null" round class="flex-1">重新上传</el-button>
+              <el-button type="primary" :loading="publishing" @click="handlePublish('PUBLISHED')" class="flex-1" round>发布到社区</el-button>
+              <el-button :loading="publishing" @click="handlePublish('PRIVATE')" class="flex-1" round>私人衣橱</el-button>
             </div>
           </div>
         </div>

@@ -47,6 +47,12 @@ public class OutfitController {
         return Result.success(outfitService.getMyOutfits(userId, page, size));
     }
 
+    @GetMapping("/my-private")
+    public Result<List<com.campus.outfit.vo.OutfitVO>> getMyPrivateOutfits(@RequestHeader("Authorization") String token) {
+        Long userId = jwtUtils.getUserIdFromToken(token.replace("Bearer ", ""));
+        return Result.success(outfitService.getMyPrivateOutfits(userId));
+    }
+
     @GetMapping("/user/{userId}")
     public Result<IPage<Outfit>> getUserOutfits(@PathVariable Long userId,
                                                @RequestParam(defaultValue = "1") int page,

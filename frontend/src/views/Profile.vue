@@ -2,7 +2,7 @@
 import { ref, onMounted, computed } from 'vue'
 import { useRoute } from 'vue-router'
 import { getUserInfo, followUser, unfollowUser } from '@/api/user'
-import { getMyOutfits, getUserOutfits, deleteOutfit } from '@/api/outfit'
+import { getMyOutfits, getUserOutfits, deleteOutfit, getMyPrivateOutfits } from '@/api/outfit'
 import MasonryGallery from '@/components/MasonryGallery.vue'
 import { useUserStore } from '@/stores/user'
 import { ElMessage } from 'element-plus'
@@ -18,6 +18,8 @@ const isFollowing = ref(false)
 const userStore = useUserStore()
 const isCurrentUser = ref(false)
 const currentUserId = computed(() => userStore.userInfo?.id || userStore.userInfo?.userId || null)
+const privateOutfits = ref<any[]>([])
+const activeTab = ref('public')
 
 const loadUser = async () => {
   try {
@@ -32,6 +34,9 @@ const loadUser = async () => {
     let outfitsRes: any
     if (isCurrentUser.value) {
       outfitsRes = await getMyOutfits({ page: 1, size: 20 })
+      // 同步获取私人衣橱数据
+      const privateRes: any = await getMyPrivateOutfits()
+      privateOutfits.value = privateRes || []
     } else {
       outfitsRes = await getUserOutfits({ 
         userId: userId,
@@ -123,8 +128,19 @@ onMounted(loadUser)
         </div>
       </div>
 
-      <el-divider content-position="left">发布的穿搭</el-divider>
-      <MasonryGallery :outfits="outfits" @delete="handleDelete" />
+      <div class="mt-8">
+        <el-tabs v-model="activeTab" class="profile-tabs">
+          <el-tab-pane label="公开穿搭" name="public">
+            <MasonryGallery :outfits="outfits" @delete="handleDelete" />
+          </el-tab-pane>
+          <el-tab-pane v-if="isCurrentUser" label="私人衣橱" name="private">
+            <div class="pt-2">
+              <el-alert title="这是您的私密空间，此页签下所有内容仅您本人可见。" type="warning" show-icon class="mb-6" :closable="false" />
+              <MasonryGallery :outfits="privateOutfits" @delete="handleDelete" />
+            </div>
+          </el-tab-pane>
+        </el-tabs>
+      </div>
     </div>
 
     <!-- AI 换装室弹窗 -->

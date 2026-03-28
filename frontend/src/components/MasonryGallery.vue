@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { Star, StarFilled, Picture, Delete, Pointer, MagicStick } from '@element-plus/icons-vue'
+import { Star, StarFilled, Picture, Delete, Pointer, MagicStick, Lock } from '@element-plus/icons-vue'
 import { getImageUrl } from '../api/image'
 import { useUserStore } from '@/stores/user'
 
@@ -117,6 +117,13 @@ const handleItemClick = (item: any) => {
               alt="Outfit Image"
               @error="handleImageError($event, item)"
             />
+            
+            <!-- 私密标识（常驻） -->
+            <div v-if="item.status === 'PRIVATE'" class="absolute top-3 left-3 z-10 pointer-events-none">
+              <span class="px-2 py-0.5 text-[10px] font-black rounded-full bg-black/60 backdrop-blur-md text-white border border-white/20 shadow-lg flex items-center gap-1">
+                <el-icon><Lock /></el-icon> 私密
+              </span>
+            </div>
             
             <div class="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300">
               <!-- 删除按钮 -->

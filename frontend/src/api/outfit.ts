@@ -36,7 +36,21 @@ export function uploadAndAnalyze(files: File[]) {
   })
 }
 
-export function publishOutfit(data: any) {
+export interface PublishParams {
+  title: string;
+  description?: string;
+  imageUrls: string[];
+  styleTags?: string[];
+  colorTags?: string[];
+  itemKeywords?: string[];
+  season?: string;
+  occasion?: string;
+  temperatureRange?: string;
+  status?: 'PUBLISHED' | 'PRIVATE' | 'DRAFT';
+  topicId?: number | null;
+}
+
+export function publishOutfit(data: PublishParams) {
   return request({
     url: '/outfit/publish',
     method: 'post',
@@ -80,5 +94,15 @@ export function incrementViewCount(id: number | string) {
   return request({
     url: `/outfit/${id}/view`,
     method: 'post'
+  })
+}
+
+/**
+ * 获取个人的私人衣橱穿搭记录
+ */
+export function getMyPrivateOutfits() {
+  return request({
+    url: '/outfit/my-private',
+    method: 'get'
   })
 }

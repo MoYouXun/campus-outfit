@@ -165,7 +165,18 @@ public class OutfitServiceImpl extends ServiceImpl<OutfitMapper, Outfit> impleme
             outfit.setCommentCount(0);
             outfit.setFavCount(0);
             outfit.setViewCount(0);
-            outfit.setStatus("PUBLISHED");
+            
+            // 状态处理
+            if (outfit.getStatus() == null) {
+                outfit.setStatus("PUBLISHED");
+            }
+            
+            // 如果是私有穿搭，强制 isPublic 为 false；否则为 true
+            if ("PRIVATE".equalsIgnoreCase(outfit.getStatus())) {
+                outfit.setIsPublic(false);
+            } else {
+                outfit.setIsPublic(true);
+            }
             
             // 设置缩略图URL
             if (outfit.getImageUrls() != null && !outfit.getImageUrls().isEmpty()) {
@@ -314,5 +325,23 @@ public class OutfitServiceImpl extends ServiceImpl<OutfitMapper, Outfit> impleme
         } catch (Exception e) {
             return null;
         }
+    }
+
+    @Override
+    public List<com.campus.outfit.vo.OutfitVO> getMyPrivateOutfits(Long userId) {
+        LambdaQueryWrapper<Outfit> wrapper = new LambdaQueryWrapper<Outfit>()
+                .eq(Outfit::getUserId, userId)
+                .eq(Outfit::getStatus, "PRIVATE")
+                .orderByDesc(Outfit::getCreateTime);
+        
+        List<Outfit> outfits = list(wrapper);
+        List<com.campus.outfit.vo.OutfitVO> vos = new ArrayList<>();
+        
+        for (Outfit outfit : outfits) {
+            refreshOutfitUrls(outfit);
+            vos.add(com.campus.outfit.vo.OutfitVO.fromOutfit(outfit, null));
+        }
+        
+        return vos;
     }
 }

@@ -16,9 +16,8 @@ public class OutfitVO extends Outfit {
     
     public static OutfitVO fromOutfit(Outfit outfit, String reason) {
         OutfitVO vo = new OutfitVO();
-        // 这里可以使用 BeanUtils.copyProperties(outfit, vo) 
-        // 但为了避免引入额外依赖或复杂的反射，我们简单包装一下
-        // 或者直接在 Service 层通过属性拷贝实现
+        org.springframework.beans.BeanUtils.copyProperties(outfit, vo);
+        vo.setRecommendReason(reason);
         return vo;
     }
 }

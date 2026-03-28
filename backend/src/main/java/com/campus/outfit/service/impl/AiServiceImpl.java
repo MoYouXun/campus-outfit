@@ -1,5 +1,7 @@
 package com.campus.outfit.service.impl;
 
+import jakarta.annotation.PostConstruct;
+
 import com.campus.outfit.dto.AiAnalysisResult;
 import com.campus.outfit.dto.AiRecommendationResult;
 import com.campus.outfit.service.AiService;
@@ -41,6 +43,14 @@ public class AiServiceImpl implements AiService {
     @Value("${api.doubao.endpoint-mini:}")
     private String endpointMini;
 
+    @Value("${api.volcengine.ak:}")
+    private String volcAk;
+
+    @Value("${api.volcengine.sk:}")
+    private String volcSk;
+
+    private IVisualService visualService;
+
     @Autowired
     private org.springframework.data.redis.core.RedisTemplate<String, Object> redisTemplate;
 
@@ -55,6 +65,16 @@ public class AiServiceImpl implements AiService {
         factory.setConnectTimeout(15000); // 15s 连接超时
         factory.setReadTimeout(60000); // 60s 读取超时，防止大模型响应缓慢导致 EOF
         this.restTemplate = new RestTemplate(factory);
+    }
+
+    @PostConstruct
+    public void init() {
+        log.info("[AI Service] 正在初始化火山引擎视觉服务客户端...");
+        this.visualService = VisualServiceImpl.getInstance();
+        this.visualService.setAccessKey(volcAk);
+        this.visualService.setSecretKey(volcSk);
+        // 如果需要，可以在此处配置超时时间，SDK 默认为 5s/30s
+        log.info("[AI Service] 火山引擎视觉服务客户端初始化完成");
     }
 
     @Override
@@ -243,92 +263,94 @@ public class AiServiceImpl implements AiService {
 
     @Override
     public String generateTryOnImage(String personImageUrl, String outfitImageUrl) {
-        log.info("[AI Try-On] 切入火山引擎专用图片换装 V2 引擎！人像: {}, 衣服: {}", personImageUrl, outfitImageUrl);
+        log.info("[AI Try-On] 切入异步换装模型 DressingDiffusionV2. 人像: {}, 衣服: {}", personImageUrl, outfitImageUrl);
         try {
-            // 1. 获取纯净的 Base64（去掉 data:image 前缀），这是专用 CV 接口的严格要求
-            String humanBase64 = getBase64FromUrl(personImageUrl);
-            String garmentBase64 = getBase64FromUrl(outfitImageUrl);
-
-            if (humanBase64 == null || humanBase64.isEmpty() || garmentBase64 == null || garmentBase64.isEmpty()) {
-                throw new RuntimeException("底层图片读取失败，请检查存储链路");
-            }
-
-            // 2. 初始化火山视觉服务客户端并进行 AK/SK 鉴权
-            IVisualService visualService = VisualServiceImpl.getInstance();
-            visualService.setAccessKey("AKLTZTc0NmY5NzA0Yjc0NGZlZDljOTNmMTg3ZWRjOTU0NzU");
-            visualService.setSecretKey("TURVNE5qSTVNbUZtWkdNM05EUTVNR0V4TmpZNE5UWmpOV1l5TWpFeE1UVQ==");
-
-            // 3. 根据官方接口文档构造 JSON Payload
-            Map<String, Object> reqBody = new HashMap<>();
-            // 内部路由键，指定调用 DressingDiffusionV2 换装模型
-            reqBody.put("req_key", "dressing_diffusionV2");
-            // 严格按顺序传入：[模特图, 服装图]
-            reqBody.put("binary_data_base64", Arrays.asList(humanBase64, garmentBase64));
+            // 第一步：提交任务
+            Map<String, Object> submitBody = new HashMap<>();
+            submitBody.put("req_key", "dressing_diffusionV2");
             
-            // 服装类型配置（当前默认 full 代表单件衣服，如果后续增加分类可改为 upper 或 bottom）
+            Map<String, String> modelMap = new HashMap<>();
+            modelMap.put("url", personImageUrl);
+            submitBody.put("model", modelMap);
+            
             Map<String, Object> garment = new HashMap<>();
-            garment.put("type", "full"); 
-            reqBody.put("garment", garment);
+            Map<String, String> garmentItem = new HashMap<>();
+            garmentItem.put("type", "full");
+            garmentItem.put("url", outfitImageUrl);
+            garment.put("data", Arrays.asList(garmentItem));
+            submitBody.put("garment", garment);
 
-            // 4. 发起 CV Process 请求
-            VisualProcessRequest req = new VisualProcessRequest();
-            req.setAction("cvProcess"); 
-            req.setVersion("2022-08-31");
-            
-            ObjectMapper mapper = new ObjectMapper();
-            req.setBody(mapper.writeValueAsString(reqBody));
+            // 使用通用 VisualProcessRequest 配合具体 Action 实现
+            VisualProcessRequest submitReq = new VisualProcessRequest();
+            submitReq.setAction("cvSubmitTask");
+            submitReq.setVersion("2022-08-31");
+            submitReq.setBody(objectMapper.writeValueAsString(submitBody));
 
-            log.info("[AI Try-On] 正在通过 Volcengine SDK 调用 V2 换装核心算力...");
-            VisualProcessResponse response = visualService.cvProcess(req);
+            log.info("[AI Try-On] 正在提交异步换装任务...");
+            // 注意：如果 visualService 没有强类型的 cvSubmitTask，SDK 通常支持通过通用接口透传
+            VisualProcessResponse submitResp = visualService.cvSubmitTask(submitReq);
             
-            // 5. 精准解析返回的合成图 Base64
-            if (response != null && response.getCode() == 10000) {
-                // 安全地将 Object 转换为 JsonNode 解析结构
-                JsonNode dataNode = mapper.valueToTree(response.getData());
-                String resultBase64 = dataNode.path("binary_data_base64").get(0).asText();
-                log.info("[AI Try-On] V2 换装计算完美结束！");
+            if (submitResp == null || submitResp.getCode() != 10000) {
+                String error = submitResp != null ? submitResp.getMessage() : "Unknown Error";
+                log.error("提交换装任务失败: {}", error);
+                throw new RuntimeException("提交换装任务失败: " + error);
+            }
+
+            JsonNode submitData = objectMapper.valueToTree(submitResp.getData());
+            String taskId = submitData.path("task_id").asText();
+            log.info("[AI Try-On] 任务提交成功, task_id: {}", taskId);
+
+            // 第二步：轮询结果
+            int maxAttempts = 40;
+            int attempt = 0;
+            while (attempt < maxAttempts) {
+                attempt++;
+                log.info("[AI Try-On] 进入轮询自旋 (第 {}/{} 次)...", attempt, maxAttempts);
+                Thread.sleep(3000);
                 
-                // 拼接前端可识别的 Data URI scheme
-                return "data:image/jpeg;base64," + resultBase64;
-            } else {
-                String errorMsg = response != null ? response.getMessage() : "Unknown Error";
-                log.error("火山专用换装 API 调用失败: {}", errorMsg);
-                throw new RuntimeException("专用换装失败: " + errorMsg);
-            }
+                Map<String, Object> queryBody = new HashMap<>();
+                queryBody.put("req_key", "dressing_diffusionV2");
+                queryBody.put("task_id", taskId);
 
+                VisualProcessRequest queryReq = new VisualProcessRequest();
+                queryReq.setAction("cvGetResult");
+                queryReq.setVersion("2022-08-31");
+                queryReq.setBody(objectMapper.writeValueAsString(queryBody));
+
+                VisualProcessResponse queryResp = visualService.cvGetResult(queryReq);
+                
+                if (queryResp == null || queryResp.getCode() != 10000) {
+                    String error = queryResp != null ? queryResp.getMessage() : "Unknown Error";
+                    log.error("轮询获取任务结果失败: {}", error);
+                    throw new RuntimeException("获取结果失败: " + error);
+                }
+
+                JsonNode queryData = objectMapper.valueToTree(queryResp.getData());
+                String status = queryData.path("status").asText();
+                log.info("[AI Try-On] 任务 {} 状态: {}", taskId, status);
+
+                if ("done".equals(status)) {
+                    String finalImageUrl = queryData.path("image_urls").get(0).asText();
+                    log.info("[AI Try-On] 换装任务完成！生成图: {}", finalImageUrl);
+                    return finalImageUrl;
+                } else if ("generating".equals(status) || "in_queue".equals(status)) {
+                    continue; // 维持自旋
+                } else {
+                    log.error("任务执行异常退出, 状态: {}", status);
+                    throw new RuntimeException("换装任务执行异常: " + status);
+                }
+            }
+            throw new RuntimeException("换装任务处理超时（120秒）");
+
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new RuntimeException("换装任务被中断", e);
         } catch (Exception e) {
-            log.error("[AI Try-On] 专用换装服务严重异常", e);
-            throw new RuntimeException("换装引擎异常: " + e.getMessage());
+            log.error("[AI Try-On] 换装服务执行失败", e);
+            throw new RuntimeException("异步换装失败: " + e.getMessage());
         }
     }
 
-    // 新增私有辅助方法：专门用于下载图片转 Base64
-    // 纯净版：专门用于解析图片并转为 Base64，严禁修改 URL 破坏签名
-    private String getBase64FromUrl(String url) {
-        try {
-            log.info("[图片转换] 正在下载图片: {}", url);
-            if (url == null || url.trim().isEmpty())
-                return "";
-
-            // 1. 如果已经是 Base64，直接截取
-            if (url.startsWith("data:image")) {
-                return url.substring(url.indexOf(",") + 1);
-            }
-
-            // 2. 核心修复：绝对不能修改带有签名的 URL（不能替换 localhost），直接转为 URI 对象防止双重编码！
-            java.net.URI parsedUri = new java.net.URI(url);
-            byte[] bytes = new RestTemplate().getForObject(parsedUri, byte[].class);
-
-            if (bytes != null && bytes.length > 0) {
-                log.info("[图片转换] 图片下载成功，体积: {} 字节", bytes.length);
-                return java.util.Base64.getEncoder().encodeToString(bytes);
-            }
-        } catch (Exception e) {
-            log.error("[图片转换致命异常] 无法下载图片: {} | 错误详情: {}", url, e.getMessage());
-            throw new RuntimeException("无法下载文件: " + url + "。错误: " + e.getMessage());
-        }
-        return "";
-    }
 
     /**
      * 从 AI 回复文本中提取 JSON 内容。

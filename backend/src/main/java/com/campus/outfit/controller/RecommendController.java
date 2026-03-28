@@ -5,7 +5,6 @@ import com.campus.outfit.security.JwtUtils;
 import com.campus.outfit.service.RecommendService;
 import com.campus.outfit.utils.Result;
 import com.campus.outfit.vo.OutfitVO;
-import com.campus.outfit.dto.AiRecommendationResult;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
 
@@ -63,17 +62,5 @@ public class RecommendController {
         }
     }
 
-    @PostMapping("/personal")
-    public Result<AiRecommendationResult> recommendPersonalized(
-            @RequestHeader("Authorization") String token,
-            @RequestParam("image") org.springframework.web.multipart.MultipartFile image,
-            @RequestParam(required = false) String scenario) {
-        try {
-            Long userId = jwtUtils.getUserIdFromToken(token.replace("Bearer ", ""));
-            return Result.success(recommendService.recommendPersonalized(userId, image, scenario));
-        } catch (Exception e) {
-            e.printStackTrace();
-            return Result.fail("AI 推荐分析失败，请稍后重试");
-        }
-    }
+
 }

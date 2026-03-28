@@ -22,8 +22,6 @@ public class WardrobeItem implements Serializable {
 
     private String originalImageUrl;
 
-    private String objectName;
-
     private String processedImageUrl;
 
     private String categoryMain;
@@ -31,8 +29,6 @@ public class WardrobeItem implements Serializable {
     private String categorySub;
 
     private String color;
-
-    private String style;
 
     private String material;
 

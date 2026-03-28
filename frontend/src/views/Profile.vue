@@ -4,11 +4,10 @@ import { useRoute } from 'vue-router'
 import { getUserInfo, followUser, unfollowUser } from '@/api/user'
 import { getMyOutfits, getUserOutfits, deleteOutfit, getMyPrivateOutfits, updateOutfitStatus, getFavoriteOutfits } from '@/api/outfit'
 import { likeOutfit, unlikeOutfit, favoriteOutfit, unfavoriteOutfit } from '@/api/interaction'
-import { getWardrobeList, deleteWardrobeItem, uploadWardrobeItem, getWardrobeListByType, getWardrobeListBySeason } from '@/api/wardrobe'
 import MasonryGallery from '@/components/MasonryGallery.vue'
 import { useUserStore } from '@/stores/user'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { MagicStick, Refresh, Plus, Delete } from '@element-plus/icons-vue'
+import { MagicStick, Refresh } from '@element-plus/icons-vue'
 import { aiTryOn } from '@/api/ai'
 import UploadImage from '@/components/UploadImage.vue'
 
@@ -23,86 +22,6 @@ const userStore = useUserStore()
 const isCurrentUser = ref(false)
 const currentUserId = computed(() => userStore.userInfo?.id || userStore.userInfo?.userId || null)
 const activeTab = ref('public')
-
-// 衣柜状态
-const wardrobeItems = ref<any[]>([])
-const wardrobeLoading = ref(false)
-const showUploadDialog = ref(false)
-const uploading = ref(false)
-const wardrobeFilter = ref({
-  type: '',
-  season: ''
-})
-const wardrobeForm = ref({
-  type: '上装',
-  color: '白色',
-  style: '休闲',
-  season: '春季',
-  file: null as File | null
-})
-
-const typeOptions = ['上装', '下装', '套装', '鞋靴', '配饰']
-const seasonOptions = ['春季', '夏季', '秋季', '冬季', '四季']
-const styleOptions = ['休闲', '正式', '运动', '极简', '复古', '甜美', '机能']
-
-const loadWardrobe = async () => {
-  if (!isCurrentUser.value) return
-  wardrobeLoading.value = true
-  try {
-    let res: any
-    if (wardrobeFilter.value.type) {
-      res = await getWardrobeListByType(wardrobeFilter.value.type)
-    } else if (wardrobeFilter.value.season) {
-      res = await getWardrobeListBySeason(wardrobeFilter.value.season)
-    } else {
-      res = await getWardrobeList()
-    }
-    wardrobeItems.value = res.data || []
-  } catch (e) {
-    console.error('加载衣柜失败:', e)
-  } finally {
-    wardrobeLoading.value = false
-  }
-}
-
-const handleUploadWardrobe = async () => {
-  if (!wardrobeForm.value.file) {
-    ElMessage.warning('请先选择或拍摄单品图片')
-    return
-  }
-  uploading.value = true
-  try {
-    const { file, ...metadata } = wardrobeForm.value
-    await uploadWardrobeItem(file, metadata)
-    ElMessage.success('单品已存入电子衣橱')
-    showUploadDialog.value = false
-    loadWardrobe()
-    // 重置表单
-    wardrobeForm.value.file = null
-  } catch (e: any) {
-    ElMessage.error(e.response?.data?.message || '上传失败')
-  } finally {
-    uploading.value = false
-  }
-}
-
-const handleDeleteWardrobe = async (id: number | string) => {
-  try {
-    await ElMessageBox.confirm('确定要从衣柜中永久删除该单品吗？此操作不可撤销。', '删除确认', {
-      confirmButtonText: '确定',
-      cancelButtonText: '取消',
-      type: 'warning',
-      customClass: 'glass-message-box'
-    })
-    await deleteWardrobeItem(id)
-    ElMessage.success('单品已移除')
-    wardrobeItems.value = wardrobeItems.value.filter(item => item.id !== id)
-  } catch (e) {}
-}
-
-const onWardrobeFileChange = (data: any) => {
-  wardrobeForm.value.file = data.compressedFile || data.originalFile
-}
 
 const loadUser = async () => {
   try {
@@ -127,11 +46,6 @@ const loadUser = async () => {
       })
     }
     outfits.value = outfitsRes.records || []
-    
-    // 如果是当前用户，加载衣柜
-    if (isCurrentUser.value) {
-      loadWardrobe()
-    }
   } catch (e) {
     console.error(e)
   }
@@ -318,125 +232,9 @@ onMounted(loadUser)
               <MasonryGallery :outfits="favoriteOutfits" @delete="handleDelete" @like="handleLike" @favorite="handleFavorite" :hideManagementButtons="true" />
             </div>
           </el-tab-pane>
-          <el-tab-pane v-if="isCurrentUser" label="我的衣柜" name="wardrobe">
-            <div class="pt-4">
-              <!-- 控制栏 -->
-              <div class="flex flex-wrap gap-4 items-center justify-between mb-8 pb-4 border-b border-border/40">
-                <div class="flex gap-4 items-center">
-                  <el-select v-model="wardrobeFilter.type" placeholder="全部类型" clearable @change="loadWardrobe" class="w-32">
-                    <el-option v-for="t in typeOptions" :key="t" :label="t" :value="t" />
-                  </el-select>
-                  <el-select v-model="wardrobeFilter.season" placeholder="全部季节" clearable @change="loadWardrobe" class="w-32">
-                    <el-option v-for="s in seasonOptions" :key="s" :label="s" :value="s" />
-                  </el-select>
-                </div>
-                <el-button type="primary" :icon="Plus" @click="showUploadDialog = true" round shadow>
-                  上传单品到衣柜
-                </el-button>
-              </div>
-
-              <!-- 衣柜网格 -->
-              <div v-loading="wardrobeLoading">
-                <div v-if="!wardrobeItems || wardrobeItems.length === 0" class="flex-center py-20 opacity-50 flex-col">
-                  <el-icon class="text-5xl mb-4 text-muted-foreground"><Picture /></el-icon>
-                  <p class="text-muted-foreground">衣柜空空如也，快去上传您的时尚单品吧~</p>
-                </div>
-
-                <div v-else class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
-                  <div 
-                    v-for="item in wardrobeItems" 
-                    :key="item.id" 
-                    class="glass-card group relative p-3 transition-all duration-500 hover:-translate-y-1 hover:shadow-2xl overflow-hidden"
-                  >
-                    <!-- 图片容器 -->
-                    <div class="relative aspect-[3/4] rounded-xl overflow-hidden mb-3">
-                      <el-image 
-                        :src="item.originalImageUrl" 
-                        fit="cover" 
-                        class="w-full h-full transition-transform duration-700 group-hover:scale-110"
-                        :preview-src-list="[item.originalImageUrl]"
-                      />
-                      
-                      <!-- 悬浮删除操作 -->
-                      <div class="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-3">
-                        <el-button type="danger" :icon="Delete" circle @click.stop="handleDeleteWardrobe(item.id)" />
-                      </div>
-
-                      <!-- 类别/季节浮窗 -->
-                      <div class="absolute top-2 left-2 flex flex-col gap-1">
-                        <span class="px-2 py-0.5 text-[10px] bg-black/60 backdrop-blur-md text-white rounded-full border border-white/10">
-                          {{ item.categoryMain }}
-                        </span>
-                        <span v-if="item.season" class="px-2 py-0.5 text-[10px] bg-primary/80 backdrop-blur-md text-white rounded-full border border-white/10">
-                          {{ item.season }}
-                        </span>
-                      </div>
-                    </div>
-
-                    <!-- 单品描述 -->
-                    <div class="px-1">
-                      <div class="flex items-center justify-between mb-1">
-                        <span class="text-xs font-bold truncate opacity-80">{{ item.style || '默认风格' }}</span>
-                        <div class="w-3 h-3 rounded-full border border-border/50" :style="{ backgroundColor: item.color === '黑色' ? '#000' : item.color === '白色' ? '#fff' : '#ccc' }" :title="item.color"></div>
-                      </div>
-                      <p class="text-[10px] text-muted-foreground line-clamp-1 italic">{{ item.createTime || '最近上传' }}</p>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </el-tab-pane>
         </el-tabs>
       </div>
     </div>
-
-    <!-- 衣柜单品上传对话框 -->
-    <el-dialog v-model="showUploadDialog" title="🪄 将单品存入电子衣橱" width="500px" append-to-body class="glass-dialog" destroy-on-close>
-      <div v-loading="uploading" element-loading-text="正在为您整理衣橱..." class="space-y-6 p-2">
-        <UploadImage @upload-success="onWardrobeFileChange" />
-        
-        <el-form label-position="top">
-          <el-row :gutter="20">
-            <el-col :span="12">
-              <el-form-item label="单品类型">
-                <el-select v-model="wardrobeForm.type" class="w-full">
-                  <el-option v-for="t in typeOptions" :key="t" :label="t" :value="t" />
-                </el-select>
-              </el-form-item>
-            </el-col>
-            <el-col :span="12">
-              <el-form-item label="适合季节">
-                <el-select v-model="wardrobeForm.season" class="w-full">
-                  <el-option v-for="s in seasonOptions" :key="s" :label="s" :value="s" />
-                </el-select>
-              </el-form-item>
-            </el-col>
-          </el-row>
-          
-          <el-row :gutter="20">
-            <el-col :span="12">
-              <el-form-item label="主色调">
-                <el-input v-model="wardrobeForm.color" placeholder="例如：月牙白" />
-              </el-form-item>
-            </el-col>
-            <el-col :span="12">
-              <el-form-item label="服饰风格">
-                <el-select v-model="wardrobeForm.style" class="w-full">
-                  <el-option v-for="st in styleOptions" :key="st" :label="st" :value="st" />
-                </el-select>
-              </el-form-item>
-            </el-col>
-          </el-row>
-        </el-form>
-
-        <div class="pt-4 flex justify-end gap-3">
-          <el-button @click="showUploadDialog = false" round>取消</el-button>
-          <el-button type="primary" @click="handleUploadWardrobe" :loading="uploading" round class="px-8 shadow-lg shadow-primary/20">
-            确认存入衣橱
-          </el-button>
-        </div>
-      </div>
-    </el-dialog>
 
     <!-- AI 换装室弹窗 -->
     <el-dialog v-model="showTryOnDialog" title="🪄 私人 AI 换装室" width="600px" destroy-on-close>

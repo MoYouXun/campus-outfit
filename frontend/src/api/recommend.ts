@@ -21,9 +21,7 @@ export interface OccasionParams extends RecommendPageParams {
 
 export interface StyleParams extends RecommendPageParams {}
 
-export interface PersonalParams extends RecommendPageParams, LocationParams {
-  scenario?: string
-}
+
 
 export function getRecommendBySeason(params: SeasonParams) {
   return request({
@@ -49,19 +47,4 @@ export function getRecommendByStyle(params: StyleParams) {
   })
 }
 
-export interface AiRecommendationResult {
-  reasoning: string
-  styleType: string
-  occasion: string
-  imageUrl: string
-  recommendedItems: string[]
-}
 
-export function getRecommendPersonalized(data: FormData) {
-  return request({
-    url: '/recommend/personal',
-    method: 'post',
-    data,
-    timeout: 60000 // 调高超时至 60 秒以适配 AI 生图
-  })
-}

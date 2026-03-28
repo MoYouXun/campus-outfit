@@ -1,7 +1,7 @@
 package com.campus.outfit.service;
 
 import com.campus.outfit.dto.AiAnalysisResult;
-import com.campus.outfit.dto.AiRecommendationResult;
+
 
 public interface AiService {
     /**
@@ -11,12 +11,7 @@ public interface AiService {
      */
     AiAnalysisResult analyzeOutfit(byte[] imageBytes);
 
-    /**
-     * 根据场景和衣橱推荐穿搭
-     * @param prompt 组装的推荐 prompt
-     * @return 推荐结果
-     */
-    AiRecommendationResult recommendOutfit(String prompt);
+
 
     /**
      * 生成 AI 换装后的图片

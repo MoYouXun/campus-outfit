@@ -1,12 +1,11 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted, watch, computed } from 'vue'
-import { getRecommendBySeason, getRecommendByOccasion, getRecommendByStyle, getRecommendPersonalized } from '@/api/recommend'
-import type { AiRecommendationResult } from '@/api/recommend'
+import { getRecommendBySeason, getRecommendByOccasion, getRecommendByStyle } from '@/api/recommend'
 import { likeOutfit, unlikeOutfit, favoriteOutfit, unfavoriteOutfit } from '@/api/interaction'
 import { useRouter } from 'vue-router'
 import { getWeatherNow } from '@/api/weather'
 import MasonryGallery from '@/components/MasonryGallery.vue'
-import { Sunny, PartlyCloudy, Cloudy, Pouring, Lightning, Location, MagicStick, Coffee, Bicycle, Suitcase, Reading, ChatDotRound, EditPen, Plus } from '@element-plus/icons-vue'
+import { Sunny, PartlyCloudy, Cloudy, Pouring, Lightning, Location, MagicStick, Coffee, Bicycle, Suitcase, Reading, EditPen } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 
 const activeTab = ref('season')
@@ -20,84 +19,11 @@ const PAGE_SIZE = 20
 let loadKey = 0 // 请求版本号，切换 Tab 时递增，防止旧请求污染新数据
 
 
-// 打字机相关
-const aiReasoning = ref('')
-const displayedReasoning = ref('')
-let typingTimer: any = null
-const startTyping = (text: string) => {
-  displayedReasoning.value = ''
-  if (typingTimer) clearInterval(typingTimer)
-  let idx = 0
-  typingTimer = setInterval(() => {
-    if (idx < text.length) {
-      displayedReasoning.value += text[idx++]
-    } else {
-      clearInterval(typingTimer)
-    }
-  }, 30)
-}
-const thinkingSteps = [
-  '🤖 正在解析场景诉求...',
-  '☁️ 结合当地气象模型分析...',
-  '👗 检索匹配的最佳单品...',
-  '✨ 极速生成最佳穿搭组合...'
-]
-const currentThinkingStep = ref(0)
-let thinkingInterval: any
 
-const startThinking = () => {
-  currentThinkingStep.value = 0
-  if (thinkingInterval) clearInterval(thinkingInterval)
-  thinkingInterval = setInterval(() => {
-    currentThinkingStep.value = (currentThinkingStep.value + 1) % thinkingSteps.length
-  }, 1200)
-}
-
-const stopThinking = () => {
-  if (thinkingInterval) clearInterval(thinkingInterval)
-}
 
 const city = ref('北京')
 const showCityInput = ref(false)
-const customScenario = ref('')
-const uploadedFile = ref<File | null>(null)
-const aiResult = ref<AiRecommendationResult | null>(null)
-const isAiLoading = ref(false)
 
-const handleFileChange = (file: any) => {
-  uploadedFile.value = file.raw
-}
-
-const handleAiRecommend = async () => {
-  if (!uploadedFile.value) {
-    ElMessage.warning('请先上传一张您的基础穿搭照片')
-    return
-  }
-  
-  isAiLoading.value = true
-  aiResult.value = null
-  startThinking()
-  
-  try {
-    const formData = new FormData()
-    formData.append('image', uploadedFile.value)
-    if (customScenario.value) {
-      formData.append('scenario', customScenario.value)
-    }
-    
-    const res = await getRecommendPersonalized(formData)
-    aiResult.value = res as any
-    if (aiResult.value?.reasoning) {
-      startTyping(aiResult.value.reasoning)
-    }
-  } catch (e: any) {
-    console.error(e)
-    ElMessage.error(e.message || 'AI 定制失败，请稍后重试')
-  } finally {
-    isAiLoading.value = false
-    stopThinking()
-  }
-}
 
 const locationStatus = ref<'idle' | 'loading' | 'success' | 'failed'>('idle')
 const detailedLocation = ref('')
@@ -266,9 +192,7 @@ const loadData = async (reset = true) => {
     outfits.value = []
     currentPage.value = 1
     hasMore.value = true
-    aiReasoning.value = ''
-    displayedReasoning.value = ''
-    if (typingTimer) clearInterval(typingTimer)
+
   }
   if (!hasMore.value) return
 
@@ -277,7 +201,7 @@ const loadData = async (reset = true) => {
 
   if (reset) {
     loading.value = true
-    if (activeTab.value === 'personal') startThinking()
+
   } else {
     loadingMore.value = true
   }
@@ -303,18 +227,6 @@ const loadData = async (reset = true) => {
       res = await getRecommendByOccasion({ ...commonParams, occasion: activeOccasion.value })
     } else if (activeTab.value === 'style') {
       res = await getRecommendByStyle(commonParams)
-    } else {
-      const params: any = { ...commonParams }
-      if (userLocation.value.latitude && userLocation.value.longitude) {
-        params.latitude = userLocation.value.latitude
-        params.longitude = userLocation.value.longitude
-      } else {
-        params.city = city.value
-      }
-      if (customScenario.value) params.scenario = customScenario.value
-      // 这里原本是拉取列表的逻辑，现在 personal 已被 handleAiRecommend 接管
-      if (activeTab.value === 'personal') return
-      res = await getRecommendPersonalized(params as any)
     }
 
     // 版本号对比：如果当前请求已过期（用户已切换 Tab）则丢弃结果
@@ -325,16 +237,13 @@ const loadData = async (reset = true) => {
     hasMore.value = records.length >= PAGE_SIZE
     currentPage.value++
 
-    if (activeTab.value === 'personal' && reset && outfits.value.length > 0) {
-      aiReasoning.value = outfits.value[0]?.recommendReason || ''
-      startTyping(aiReasoning.value)
-    }
+
   } catch (e) {
     console.error(e)
     } finally {
     loading.value = false
     loadingMore.value = false
-    if (activeTab.value === 'personal') stopThinking()
+
   }
 }
 
@@ -405,8 +314,7 @@ onMounted(() => {
 
 onUnmounted(() => {
   // 清除所有定时器，防止组件卸载后 setInterval 持续执行导致内存泄漏
-  if (typingTimer) clearInterval(typingTimer)
-  if (thinkingInterval) clearInterval(thinkingInterval)
+
 })</script>
 
 <template>
@@ -477,7 +385,7 @@ onUnmounted(() => {
           <el-tab-pane label="天气匹配" name="season"></el-tab-pane>
           <el-tab-pane label="场景推荐" name="occasion"></el-tab-pane>
           <el-tab-pane label="风格发现" name="style"></el-tab-pane>
-          <el-tab-pane label="个性化定制" name="personal"></el-tab-pane>
+
         </el-tabs>
       </div>
 
@@ -499,147 +407,18 @@ onUnmounted(() => {
         </div>
       </transition>
 
-      <!-- 个性化穿搭 AI 互动区 (Destructive Refactor) -->
-      <transition name="el-zoom-in-top">
-        <div v-if="activeTab === 'personal'" class="mt-4 animate-fade-in bg-background/40 backdrop-blur-md p-8 rounded-3xl border border-primary/20 shadow-2xl shadow-primary/5">
-          <div class="max-w-4xl mx-auto">
-            <div class="text-center mb-8">
-              <h2 class="text-2xl font-black mb-2 flex items-center justify-center gap-2">
-                <el-icon class="text-primary"><MagicStick /></el-icon>
-                AI 私人穿搭顾问
-              </h2>
-              <p class="text-muted-foreground">上传您今日的基础穿搭或单品，让 AI 为您从衣橱中寻找灵感并生成效果图</p>
-            </div>
 
-            <div class="grid md:grid-cols-2 gap-8 items-start">
-              <!-- 左侧：上传与输入 -->
-              <div class="space-y-6">
-                <div class="upload-section">
-                  <div class="text-sm font-bold mb-3 flex items-center gap-2">
-                    <span class="w-1.5 h-1.5 rounded-full bg-primary"></span>
-                    第一步：上传穿搭照片
-                  </div>
-                  <el-upload
-                    class="ai-uploader"
-                    drag
-                    action="#"
-                    :auto-upload="false"
-                    :on-change="handleFileChange"
-                    :show-file-list="true"
-                    limit="1"
-                  >
-                    <el-icon class="el-icon--upload"><Plus /></el-icon>
-                    <div class="el-upload__text">
-                      将图片拖到此处，或 <em>点击上传</em>
-                    </div>
-                    <template #tip>
-                      <div class="el-upload__tip text-center font-medium mt-2">支持 JPG/PNG 格式，建议拍摄全身或核心单品</div>
-                    </template>
-                  </el-upload>
-                </div>
-
-                <div class="scenario-section">
-                  <div class="text-sm font-bold mb-3 flex items-center gap-2">
-                    <span class="w-1.5 h-1.5 rounded-full bg-primary"></span>
-                    第二步：描述穿着场景（可选）
-                  </div>
-                  <el-input 
-                    v-model="customScenario" 
-                    type="textarea"
-                    :rows="3"
-                    placeholder="例如：明天去参加互联网公司面试，怎么穿能展现专业和活力？" 
-                    class="custom-textarea"
-                  />
-                </div>
-
-                <el-button 
-                  type="primary" 
-                  size="large"
-                  :loading="isAiLoading"
-                  @click="handleAiRecommend"
-                  class="w-full h-14 rounded-2xl font-black text-lg shadow-xl shadow-primary/30"
-                >
-                  {{ isAiLoading ? 'AI 正在魔法生成中...' : '开始专属定制' }}
-                </el-button>
-              </div>
-
-              <!-- 右侧：生成结果 -->
-              <div class="result-section min-h-[400px] relative rounded-3xl overflow-hidden border-2 border-dashed border-primary/10 bg-primary/5 flex items-center justify-center">
-                <div v-if="isAiLoading" class="text-center p-8 animate-fade-in">
-                  <div class="relative w-24 h-24 mx-auto mb-6">
-                    <div class="absolute inset-0 border-4 border-primary/20 rounded-full animate-ping"></div>
-                    <div class="absolute inset-2 border-4 border-primary rounded-full border-t-transparent animate-spin"></div>
-                    <div class="absolute inset-0 flex items-center justify-center text-3xl">✨</div>
-                  </div>
-                  <div class="text-xl font-bold text-gradient mb-3">{{ thinkingSteps[currentThinkingStep] }}</div>
-                  <p class="text-sm text-foreground/60 leading-relaxed px-4">
-                    您的专属AI时尚顾问正在为您从衣柜挑选搭配并生成效果图，约需20秒，请稍候...
-                  </p>
-                </div>
-
-                <div v-else-if="aiResult" class="w-full h-full animate-fade-in p-1">
-                  <div class="relative group h-full">
-                    <img :src="aiResult.imageUrl" class="w-full h-full object-cover rounded-[22px] shadow-2xl" />
-                    <div class="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent"></div>
-                    <div class="absolute bottom-0 left-0 right-0 p-6 text-white">
-                      <div class="flex gap-2 mb-3">
-                        <span class="px-2 py-1 rounded bg-primary text-[10px] font-black uppercase">{{ aiResult.styleType }}</span>
-                        <span class="px-2 py-1 rounded bg-white/20 backdrop-blur-md text-[10px] font-black uppercase">{{ aiResult.occasion }}</span>
-                      </div>
-                      <h4 class="text-lg font-black mb-2 flex items-center gap-2">
-                        <el-icon><ChatDotRound /></el-icon> 定制搭配解析
-                      </h4>
-                      <p class="text-sm opacity-90 leading-relaxed font-medium">
-                        {{ displayedReasoning }}<span class="typing-cursor">|</span>
-                      </p>
-                    </div>
-                  </div>
-                </div>
-
-                <div v-else class="text-center text-muted-foreground/40 opacity-50 p-12">
-                  <el-icon size="64" class="mb-4"><MagicStick /></el-icon>
-                  <p class="font-bold">等待您的灵感火花...</p>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </transition>
     </div>
 
     <!-- 瀑布流展示区 -->
     <div v-if="loading" class="py-32 flex flex-col items-center justify-center animate-fade-in gap-5">
-      <template v-if="activeTab === 'personal'">
-        <div class="relative w-24 h-24 mb-2">
-          <div class="absolute inset-0 border-4 border-primary/20 rounded-full animate-ping"></div>
-          <div class="absolute inset-2 border-4 border-primary rounded-full border-t-transparent animate-spin"></div>
-          <div class="absolute inset-0 flex items-center justify-center text-3xl">✨</div>
-        </div>
-        <div class="text-xl font-bold text-gradient transition-all duration-300">{{ thinkingSteps[currentThinkingStep] }}</div>
-        <p class="text-sm text-foreground/60">专属 AI 搭配管家正在为您调度衣橱与气象数据...</p>
-      </template>
-      <template v-else>
-        <el-skeleton :rows="5" animated class="w-full max-w-xl" />
-        <p class="text-sm text-muted-foreground animate-pulse mt-4">正在计算推荐穿搭组合...</p>
-      </template>
+
+      <el-skeleton :rows="5" animated class="w-full max-w-xl" />
+      <p class="text-sm text-muted-foreground animate-pulse mt-4">正在计算推荐穿搭组合...</p>
     </div>
     
-    <div v-else-if="activeTab !== 'personal'" class="animate-fade-in">
-      <!-- AI 推理画板 (仅在个人推荐且有数据时显示) -->
-      <div v-if="activeTab === 'personal' && aiReasoning && outfits.length > 0" class="mb-8 p-6 bg-background/60 backdrop-blur-xl rounded-2xl border border-primary/30 shadow-[0_4px_24px_rgba(var(--primary-rgb),0.08)] animate-slide-up">
-        <div class="flex items-start gap-4">
-          <div class="w-12 h-12 rounded-xl bg-gradient-to-br from-primary/20 to-primary/10 flex items-center justify-center shrink-0 border border-primary/20 shadow-inner">
-            <el-icon class="text-2xl text-primary"><ChatDotRound /></el-icon>
-          </div>
-          <div class="flex-1">
-            <h3 class="text-lg font-bold mb-2 flex items-center gap-2">
-              穿搭解析顾问 
-              <span class="text-[10px] px-2 py-0.5 rounded-full bg-primary/10 text-primary border border-primary/20 tracking-wider">AI GENERATED</span>
-            </h3>
-            <p class="text-foreground/80 leading-relaxed font-medium">{{ displayedReasoning }}<span class="typing-cursor">|</span></p>
-          </div>
-        </div>
-      </div>
+    <div v-else class="animate-fade-in">
+
 
       <el-scrollbar
         v-if="outfits.length > 0"
@@ -772,18 +551,6 @@ onUnmounted(() => {
   -webkit-text-fill-color: transparent;
 }
 
-.ai-uploader :deep(.el-upload-dragger) {
-  @apply rounded-2xl border-2 border-dashed border-primary/20 bg-primary/5 transition-all;
-}
-
-.ai-uploader :deep(.el-upload-dragger:hover) {
-  @apply border-primary/50 bg-primary/10;
-}
-
-.custom-textarea :deep(.el-textarea__inner) {
-  @apply rounded-2xl border-primary/10 bg-primary/5 p-4 transition-all focus:border-primary/50;
-}
-
 :deep(.custom-tabs .el-tabs__nav-wrap::after) {
   background-color: transparent;
 }
@@ -825,17 +592,5 @@ onUnmounted(() => {
   animation: slide-up 0.4s ease-out;
 }
 
-/* 打字机光标闪烁动画 */
-@keyframes blink {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0; }
-}
 
-.typing-cursor {
-  display: inline-block;
-  margin-left: 1px;
-  font-weight: 300;
-  color: var(--el-color-primary);
-  animation: blink 0.9s step-end infinite;
-}
 </style>

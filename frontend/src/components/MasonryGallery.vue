@@ -7,6 +7,7 @@ import { useUserStore } from '@/stores/user'
 
 const props = defineProps<{
   outfits: any[]
+  hideManagementButtons?: boolean
 }>()
 
 const router = useRouter()
@@ -127,7 +128,7 @@ const handleItemClick = (item: any) => {
             
             <div class="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300">
               <!-- 删除按钮 -->
-              <div v-if="isPostOwner(item)" class="absolute top-4 right-4 animate-fade-in" @click.stop="emit('delete', item.id)">
+              <div v-if="isPostOwner(item) && !hideManagementButtons" class="absolute top-4 right-4 animate-fade-in" @click.stop="emit('delete', item.id)">
                 <div class="w-10 h-10 rounded-full bg-red-500/80 backdrop-blur-md flex-center text-white hover:bg-red-600 transition-colors">
                   <el-icon size="20"><Delete /></el-icon>
                 </div>
@@ -135,7 +136,7 @@ const handleItemClick = (item: any) => {
 
               <!-- 状态切换按钮（移入/移出私人衣橱） -->
               <div 
-                v-if="isPostOwner(item)" 
+                v-if="isPostOwner(item) && !hideManagementButtons" 
                 class="absolute top-4 left-4 animate-fade-in" 
                 :title="item.status === 'PRIVATE' ? '发布到社区' : '移入私人衣橱'"
                 @click.stop="emit('toggle-status', item)"
@@ -213,7 +214,7 @@ const handleItemClick = (item: any) => {
                 <el-avatar :size="24" :src="item.userAvatar" class="bg-primary/20" />
                 <span class="text-xs font-medium text-foreground/80 truncate max-w-[80px]">{{ item.username || '匿名用户' }}</span>
               </div>
-              <div class="flex items-center gap-1 text-muted-foreground text-[10px] font-medium transition-colors" :class="{'text-yellow-500': item.favorited}">
+              <div class="flex items-center gap-1 text-muted-foreground text-[10px] font-medium transition-colors cursor-pointer hover:text-yellow-500" :class="{'text-yellow-500': item.favorited}" @click.stop="emit('favorite', item)">
                 <el-icon><component :is="item.favorited ? StarFilled : Star" /></el-icon>
                 <span>{{ item.favCount || 0 }}</span>
               </div>

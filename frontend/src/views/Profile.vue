@@ -3,6 +3,7 @@ import { ref, onMounted, computed } from 'vue'
 import { useRoute } from 'vue-router'
 import { getUserInfo, followUser, unfollowUser } from '@/api/user'
 import { getMyOutfits, getUserOutfits, deleteOutfit, getMyPrivateOutfits, updateOutfitStatus, getFavoriteOutfits } from '@/api/outfit'
+import { likeOutfit, unlikeOutfit, favoriteOutfit, unfavoriteOutfit } from '@/api/interaction'
 import MasonryGallery from '@/components/MasonryGallery.vue'
 import { useUserStore } from '@/stores/user'
 import { ElMessage, ElMessageBox } from 'element-plus'
@@ -96,6 +97,57 @@ const handleToggleStatus = async (item: any, newStatus: string) => {
   }
 }
 
+const handleLike = async (item: any) => {
+  if (!userStore.token) {
+    ElMessage.warning('请登录后再参与互动')
+    return
+  }
+  try {
+    if (item.liked) {
+      await unlikeOutfit(item.id, currentUserId.value!)
+      item.likeCount = Math.max(0, (item.likeCount || 0) - 1)
+      item.liked = false
+    } else {
+      await likeOutfit(item.id, currentUserId.value!)
+      item.likeCount = (item.likeCount || 0) + 1
+      item.liked = true
+      ElMessage({ message: '点赞成功！', type: 'success', grouping: true })
+    }
+  } catch (error: any) {
+    ElMessage.error(error.message || '操作失败')
+  }
+}
+
+const handleFavorite = async (item: any) => {
+  if (!userStore.token) {
+    ElMessage.warning('请登录后再参与互动')
+    return
+  }
+  try {
+    if (item.favorited) {
+      await unfavoriteOutfit(item.id, currentUserId.value!)
+      item.favCount = Math.max(0, (item.favCount || 0) - 1)
+      item.favorited = false
+      if (activeTab.value === 'favorites') {
+        favoriteOutfits.value = favoriteOutfits.value.filter(o => o.id !== item.id)
+      }
+    } else {
+      await favoriteOutfit(item.id, currentUserId.value!)
+      item.favCount = (item.favCount || 0) + 1
+      item.favorited = true
+      ElMessage({ message: '收藏成功！', type: 'success', grouping: true })
+      if (activeTab.value !== 'favorites') {
+        const exist = favoriteOutfits.value.find(o => o.id === item.id)
+        if (!exist) {
+           favoriteOutfits.value.unshift({...item})
+        }
+      }
+    }
+  } catch (error: any) {
+    ElMessage.error(error.message || '操作失败')
+  }
+}
+
 const handleFollow = async () => {
   try {
     if (isFollowing.value) await unfollowUser(userId)
@@ -167,17 +219,17 @@ onMounted(loadUser)
       <div class="mt-8">
         <el-tabs v-model="activeTab" class="profile-tabs">
           <el-tab-pane label="公开穿搭" name="public">
-            <MasonryGallery :outfits="outfits" @delete="handleDelete" @toggle-status="(item) => handleToggleStatus(item, 'PRIVATE')" />
+            <MasonryGallery :outfits="outfits" @delete="handleDelete" @toggle-status="(item) => handleToggleStatus(item, 'PRIVATE')" @like="handleLike" @favorite="handleFavorite" />
           </el-tab-pane>
           <el-tab-pane v-if="isCurrentUser" label="私人衣橱" name="private">
             <div class="pt-2">
               <el-alert title="这是您的私密空间，此页签下所有内容仅您本人可见。" type="warning" show-icon class="mb-6" :closable="false" />
-              <MasonryGallery :outfits="privateOutfits" @delete="handleDelete" @toggle-status="(item) => handleToggleStatus(item, 'PUBLISHED')" />
+              <MasonryGallery :outfits="privateOutfits" @delete="handleDelete" @toggle-status="(item) => handleToggleStatus(item, 'PUBLISHED')" @like="handleLike" @favorite="handleFavorite" />
             </div>
           </el-tab-pane>
           <el-tab-pane v-if="isCurrentUser" label="我的收藏" name="favorites">
             <div class="pt-2">
-              <MasonryGallery :outfits="favoriteOutfits" @delete="handleDelete" />
+              <MasonryGallery :outfits="favoriteOutfits" @delete="handleDelete" @like="handleLike" @favorite="handleFavorite" :hideManagementButtons="true" />
             </div>
           </el-tab-pane>
         </el-tabs>

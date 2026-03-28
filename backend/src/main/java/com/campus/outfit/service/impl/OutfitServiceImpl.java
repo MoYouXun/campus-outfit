@@ -367,4 +367,42 @@ public class OutfitServiceImpl extends ServiceImpl<OutfitMapper, Outfit> impleme
         
         updateById(outfit);
     }
+
+    @Override
+    public List<com.campus.outfit.vo.OutfitVO> getMyFavoriteOutfits(Long userId) {
+        LambdaQueryWrapper<com.campus.outfit.entity.Favorite> favWrapper = new LambdaQueryWrapper<com.campus.outfit.entity.Favorite>()
+                .eq(com.campus.outfit.entity.Favorite::getUserId, userId)
+                .orderByDesc(com.campus.outfit.entity.Favorite::getCreateTime);
+        
+        List<com.campus.outfit.entity.Favorite> favorites = favoriteService.list(favWrapper);
+        if (favorites.isEmpty()) {
+            return new ArrayList<>();
+        }
+        
+        List<Long> outfitIds = favorites.stream()
+                .map(com.campus.outfit.entity.Favorite::getOutfitId)
+                .collect(java.util.stream.Collectors.toList());
+                
+        LambdaQueryWrapper<Outfit> outfitWrapper = new LambdaQueryWrapper<Outfit>()
+                .in(Outfit::getId, outfitIds)
+                .and(w -> w.eq(Outfit::getStatus, "PUBLISHED")
+                           .or()
+                           .eq(Outfit::getUserId, userId));
+
+        List<Outfit> outfits = list(outfitWrapper);
+        
+        java.util.Map<Long, Outfit> outfitMap = outfits.stream().collect(java.util.stream.Collectors.toMap(Outfit::getId, o -> o));
+        
+        List<com.campus.outfit.vo.OutfitVO> vos = new ArrayList<>();
+        for (com.campus.outfit.entity.Favorite favorite : favorites) {
+            Outfit outfit = outfitMap.get(favorite.getOutfitId());
+            if (outfit != null) {
+                refreshOutfitUrls(outfit);
+                populateLikedAndFavorited(outfit, userId);
+                vos.add(com.campus.outfit.vo.OutfitVO.fromOutfit(outfit, null));
+            }
+        }
+        
+        return vos;
+    }
 }

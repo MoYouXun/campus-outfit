@@ -119,3 +119,13 @@ export function updateOutfitStatus(id: number | string, status: 'PUBLISHED' | 'P
     params: { status }
   })
 }
+
+/**
+ * 获取个人的收藏穿搭列表
+ */
+export function getFavoriteOutfits() {
+  return request({
+    url: '/outfit/my-favorites',
+    method: 'get'
+  })
+}

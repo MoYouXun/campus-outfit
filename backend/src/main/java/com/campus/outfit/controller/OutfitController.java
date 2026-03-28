@@ -60,6 +60,12 @@ public class OutfitController {
         return Result.success(outfitService.getPublicOutfits(page, size, "latest", null, userId, null));
     }
 
+    @GetMapping("/my-favorites")
+    public Result<List<com.campus.outfit.vo.OutfitVO>> getMyFavoriteOutfits(@RequestHeader("Authorization") String token) {
+        Long userId = jwtUtils.getUserIdFromToken(token.replace("Bearer ", ""));
+        return Result.success(outfitService.getMyFavoriteOutfits(userId));
+    }
+
 
 
     @DeleteMapping("/{id}")

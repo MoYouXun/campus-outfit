@@ -2,7 +2,7 @@
 import { ref, onMounted, computed } from 'vue'
 import { useRoute } from 'vue-router'
 import { getUserInfo, followUser, unfollowUser } from '@/api/user'
-import { getMyOutfits, getUserOutfits, deleteOutfit, getMyPrivateOutfits, updateOutfitStatus } from '@/api/outfit'
+import { getMyOutfits, getUserOutfits, deleteOutfit, getMyPrivateOutfits, updateOutfitStatus, getFavoriteOutfits } from '@/api/outfit'
 import MasonryGallery from '@/components/MasonryGallery.vue'
 import { useUserStore } from '@/stores/user'
 import { ElMessage, ElMessageBox } from 'element-plus'
@@ -15,6 +15,7 @@ const userId = route.params.id as string
 const user = ref<any>(null)
 const outfits = ref<any[]>([]) // 公开列表
 const privateOutfits = ref<any[]>([]) // 私人衣橱
+const favoriteOutfits = ref<any[]>([]) // 我的收藏
 const isFollowing = ref(false)
 const userStore = useUserStore()
 const isCurrentUser = ref(false)
@@ -34,6 +35,8 @@ const loadUser = async () => {
       outfitsRes = await getMyOutfits({ page: 1, size: 20 })
       const privateRes: any = await getMyPrivateOutfits()
       privateOutfits.value = privateRes || []
+      const favoriteRes: any = await getFavoriteOutfits()
+      favoriteOutfits.value = favoriteRes || []
     } else {
       outfitsRes = await getUserOutfits({ 
         userId: userId,
@@ -170,6 +173,11 @@ onMounted(loadUser)
             <div class="pt-2">
               <el-alert title="这是您的私密空间，此页签下所有内容仅您本人可见。" type="warning" show-icon class="mb-6" :closable="false" />
               <MasonryGallery :outfits="privateOutfits" @delete="handleDelete" @toggle-status="(item) => handleToggleStatus(item, 'PUBLISHED')" />
+            </div>
+          </el-tab-pane>
+          <el-tab-pane v-if="isCurrentUser" label="我的收藏" name="favorites">
+            <div class="pt-2">
+              <MasonryGallery :outfits="favoriteOutfits" @delete="handleDelete" />
             </div>
           </el-tab-pane>
         </el-tabs>

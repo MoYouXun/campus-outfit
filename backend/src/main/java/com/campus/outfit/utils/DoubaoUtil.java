@@ -24,7 +24,7 @@ public class DoubaoUtil {
     private final MinioService minioService;
     private final WardrobeItemMapper wardrobeItemMapper;
 
-    @Value("${doubao.apiKey}")
+    @Value("${api.doubao.key}")
     private String apiKey;
 
     // 豆包 API 节点（建议从配置文件读取，默认为火山方舟通用节点）

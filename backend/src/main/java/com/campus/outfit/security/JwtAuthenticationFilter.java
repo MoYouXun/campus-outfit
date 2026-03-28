@@ -23,6 +23,23 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     private JwtUtils jwtUtils;
 
     @Override
+    protected boolean shouldNotFilter(HttpServletRequest request) throws ServletException {
+        String uri = request.getRequestURI();
+        // 排除无需过滤的公开接口路径
+        return uri.startsWith("/api/user/login") ||
+               uri.startsWith("/api/user/register") ||
+               uri.startsWith("/api/community/") ||
+               uri.startsWith("/api/topic/") ||
+               uri.startsWith("/api/outfit/test-analyze") ||
+               uri.startsWith("/api/outfit/analyze") ||
+               uri.startsWith("/api/outfit/upload") ||
+               uri.startsWith("/api/weather/") ||
+               uri.startsWith("/api/recommend/season") ||
+               uri.startsWith("/api/recommend/occasion") ||
+               uri.startsWith("/error");
+    }
+
+    @Override
     protected void doFilterInternal(HttpServletRequest request,
             HttpServletResponse response,
             FilterChain filterChain) throws ServletException, IOException {

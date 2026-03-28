@@ -95,4 +95,37 @@ public class MinioService {
                         .expiry(7, TimeUnit.DAYS)
                         .build());
     }
+
+    /**
+     * 从 MinIO 删除图片
+     * 
+     * @param objectName 图片文件名标识
+     */
+    public void deleteImage(String objectName) throws Exception {
+        minioClient.removeObject(
+                io.minio.RemoveObjectArgs.builder()
+                        .bucket(bucketName)
+                        .object(objectName)
+                        .build());
+    }
+
+    /**
+     * 获取图片并转为 Base64 格式
+     */
+    public String getImageAsBase64(String objectName) throws Exception {
+        try (InputStream in = minioClient.getObject(
+                io.minio.GetObjectArgs.builder()
+                        .bucket(bucketName)
+                        .object(objectName)
+                        .build()
+        )) {
+            java.io.ByteArrayOutputStream baos = new java.io.ByteArrayOutputStream();
+            byte[] buffer = new byte[1024];
+            int len;
+            while ((len = in.read(buffer)) > 0) {
+                baos.write(buffer, 0, len);
+            }
+            return java.util.Base64.getEncoder().encodeToString(baos.toByteArray());
+        }
+    }
 }

@@ -2,6 +2,8 @@ package com.campus.outfit.service;
 
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.campus.outfit.vo.OutfitVO;
+import com.campus.outfit.dto.AiRecommendationResult;
+import org.springframework.web.multipart.MultipartFile;
 
 public interface RecommendService {
     /**
@@ -20,7 +22,7 @@ public interface RecommendService {
     IPage<OutfitVO> recommendByStyle(Long userId, int page, int size);
 
     /**
-     * 个性化综合推荐
+     * AI 穿搭个性化分析流水线：上传照片 -> 衣柜匹配 -> 分析建议 -> 效果图生成
      */
-    IPage<OutfitVO> recommendPersonalized(Long userId, String city, Double latitude, Double longitude, String scenario, int page, int size);
+    AiRecommendationResult recommendPersonalized(Long userId, MultipartFile image, String scenario);
 }

@@ -5,6 +5,7 @@ import com.campus.outfit.security.JwtUtils;
 import com.campus.outfit.service.RecommendService;
 import com.campus.outfit.utils.Result;
 import com.campus.outfit.vo.OutfitVO;
+import com.campus.outfit.dto.AiRecommendationResult;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
 
@@ -62,21 +63,17 @@ public class RecommendController {
         }
     }
 
-    @GetMapping("/personal")
-    public Result<IPage<OutfitVO>> recommendPersonalized(
+    @PostMapping("/personal")
+    public Result<AiRecommendationResult> recommendPersonalized(
             @RequestHeader("Authorization") String token,
-            @RequestParam(required = false, defaultValue = "北京") String city,
-            @RequestParam(required = false) Double latitude,
-            @RequestParam(required = false) Double longitude,
-            @RequestParam(required = false) String scenario,
-            @RequestParam(defaultValue = "1") int page,
-            @RequestParam(defaultValue = "20") int size) {
+            @RequestParam("image") org.springframework.web.multipart.MultipartFile image,
+            @RequestParam(required = false) String scenario) {
         try {
             Long userId = jwtUtils.getUserIdFromToken(token.replace("Bearer ", ""));
-            return Result.success(recommendService.recommendPersonalized(userId, city, latitude, longitude, scenario, page, size));
+            return Result.success(recommendService.recommendPersonalized(userId, image, scenario));
         } catch (Exception e) {
             e.printStackTrace();
-            return Result.fail("获取推荐失败，请稍后重试");
+            return Result.fail("AI 推荐分析失败，请稍后重试");
         }
     }
 }

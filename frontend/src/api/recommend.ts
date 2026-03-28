@@ -49,10 +49,19 @@ export function getRecommendByStyle(params: StyleParams) {
   })
 }
 
-export function getRecommendPersonalized(params: PersonalParams) {
+export interface AiRecommendationResult {
+  reasoning: string
+  styleType: string
+  occasion: string
+  imageUrl: string
+  recommendedItems: string[]
+}
+
+export function getRecommendPersonalized(data: FormData) {
   return request({
     url: '/recommend/personal',
-    method: 'get',
-    params
+    method: 'post',
+    data,
+    timeout: 60000 // 调高超时至 60 秒以适配 AI 生图
   })
 }

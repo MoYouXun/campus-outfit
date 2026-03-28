@@ -1,11 +1,12 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted, watch, computed } from 'vue'
 import { getRecommendBySeason, getRecommendByOccasion, getRecommendByStyle, getRecommendPersonalized } from '@/api/recommend'
+import type { AiRecommendationResult } from '@/api/recommend'
 import { likeOutfit, unlikeOutfit, favoriteOutfit, unfavoriteOutfit } from '@/api/interaction'
 import { useRouter } from 'vue-router'
 import { getWeatherNow } from '@/api/weather'
 import MasonryGallery from '@/components/MasonryGallery.vue'
-import { Sunny, PartlyCloudy, Cloudy, Pouring, Lightning, Location, MagicStick, Coffee, Bicycle, Suitcase, Reading, ChatDotRound, EditPen } from '@element-plus/icons-vue'
+import { Sunny, PartlyCloudy, Cloudy, Pouring, Lightning, Location, MagicStick, Coffee, Bicycle, Suitcase, Reading, ChatDotRound, EditPen, Plus } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 
 const activeTab = ref('season')
@@ -59,6 +60,44 @@ const stopThinking = () => {
 const city = ref('北京')
 const showCityInput = ref(false)
 const customScenario = ref('')
+const uploadedFile = ref<File | null>(null)
+const aiResult = ref<AiRecommendationResult | null>(null)
+const isAiLoading = ref(false)
+
+const handleFileChange = (file: any) => {
+  uploadedFile.value = file.raw
+}
+
+const handleAiRecommend = async () => {
+  if (!uploadedFile.value) {
+    ElMessage.warning('请先上传一张您的基础穿搭照片')
+    return
+  }
+  
+  isAiLoading.value = true
+  aiResult.value = null
+  startThinking()
+  
+  try {
+    const formData = new FormData()
+    formData.append('image', uploadedFile.value)
+    if (customScenario.value) {
+      formData.append('scenario', customScenario.value)
+    }
+    
+    const res = await getRecommendPersonalized(formData)
+    aiResult.value = res as any
+    if (aiResult.value?.reasoning) {
+      startTyping(aiResult.value.reasoning)
+    }
+  } catch (e: any) {
+    console.error(e)
+    ElMessage.error(e.message || 'AI 定制失败，请稍后重试')
+  } finally {
+    isAiLoading.value = false
+    stopThinking()
+  }
+}
 
 const locationStatus = ref<'idle' | 'loading' | 'success' | 'failed'>('idle')
 const detailedLocation = ref('')
@@ -273,7 +312,9 @@ const loadData = async (reset = true) => {
         params.city = city.value
       }
       if (customScenario.value) params.scenario = customScenario.value
-      res = await getRecommendPersonalized(params)
+      // 这里原本是拉取列表的逻辑，现在 personal 已被 handleAiRecommend 接管
+      if (activeTab.value === 'personal') return
+      res = await getRecommendPersonalized(params as any)
     }
 
     // 版本号对比：如果当前请求已过期（用户已切换 Tab）则丢弃结果
@@ -458,22 +499,109 @@ onUnmounted(() => {
         </div>
       </transition>
 
-      <!-- 个性化场景输入 (仅在个性化推荐下显示) -->
+      <!-- 个性化穿搭 AI 互动区 (Destructive Refactor) -->
       <transition name="el-zoom-in-top">
-        <div v-if="activeTab === 'personal'" class="mt-4 animate-fade-in bg-background/40 backdrop-blur-md p-4 rounded-xl border border-border/50 shadow-sm">
-          <div class="flex gap-4">
-            <el-input 
-              v-model="customScenario" 
-              placeholder="请描述您的具体场景（例如：明天去参加互联网大厂面试，怎么穿能展现专业和活力？）" 
-              clearable
-              @keyup.enter="loadData"
-              class="custom-scenario-input"
-            >
-              <template #prefix>
-                <el-icon><ChatDotRound /></el-icon>
-              </template>
-            </el-input>
-            <el-button type="primary" :icon="MagicStick" @click="loadData" class="px-6 rounded-lg font-bold shadow-lg shadow-primary/30">AI 推荐</el-button>
+        <div v-if="activeTab === 'personal'" class="mt-4 animate-fade-in bg-background/40 backdrop-blur-md p-8 rounded-3xl border border-primary/20 shadow-2xl shadow-primary/5">
+          <div class="max-w-4xl mx-auto">
+            <div class="text-center mb-8">
+              <h2 class="text-2xl font-black mb-2 flex items-center justify-center gap-2">
+                <el-icon class="text-primary"><MagicStick /></el-icon>
+                AI 私人穿搭顾问
+              </h2>
+              <p class="text-muted-foreground">上传您今日的基础穿搭或单品，让 AI 为您从衣橱中寻找灵感并生成效果图</p>
+            </div>
+
+            <div class="grid md:grid-cols-2 gap-8 items-start">
+              <!-- 左侧：上传与输入 -->
+              <div class="space-y-6">
+                <div class="upload-section">
+                  <div class="text-sm font-bold mb-3 flex items-center gap-2">
+                    <span class="w-1.5 h-1.5 rounded-full bg-primary"></span>
+                    第一步：上传穿搭照片
+                  </div>
+                  <el-upload
+                    class="ai-uploader"
+                    drag
+                    action="#"
+                    :auto-upload="false"
+                    :on-change="handleFileChange"
+                    :show-file-list="true"
+                    limit="1"
+                  >
+                    <el-icon class="el-icon--upload"><Plus /></el-icon>
+                    <div class="el-upload__text">
+                      将图片拖到此处，或 <em>点击上传</em>
+                    </div>
+                    <template #tip>
+                      <div class="el-upload__tip text-center font-medium mt-2">支持 JPG/PNG 格式，建议拍摄全身或核心单品</div>
+                    </template>
+                  </el-upload>
+                </div>
+
+                <div class="scenario-section">
+                  <div class="text-sm font-bold mb-3 flex items-center gap-2">
+                    <span class="w-1.5 h-1.5 rounded-full bg-primary"></span>
+                    第二步：描述穿着场景（可选）
+                  </div>
+                  <el-input 
+                    v-model="customScenario" 
+                    type="textarea"
+                    :rows="3"
+                    placeholder="例如：明天去参加互联网公司面试，怎么穿能展现专业和活力？" 
+                    class="custom-textarea"
+                  />
+                </div>
+
+                <el-button 
+                  type="primary" 
+                  size="large"
+                  :loading="isAiLoading"
+                  @click="handleAiRecommend"
+                  class="w-full h-14 rounded-2xl font-black text-lg shadow-xl shadow-primary/30"
+                >
+                  {{ isAiLoading ? 'AI 正在魔法生成中...' : '开始专属定制' }}
+                </el-button>
+              </div>
+
+              <!-- 右侧：生成结果 -->
+              <div class="result-section min-h-[400px] relative rounded-3xl overflow-hidden border-2 border-dashed border-primary/10 bg-primary/5 flex items-center justify-center">
+                <div v-if="isAiLoading" class="text-center p-8 animate-fade-in">
+                  <div class="relative w-24 h-24 mx-auto mb-6">
+                    <div class="absolute inset-0 border-4 border-primary/20 rounded-full animate-ping"></div>
+                    <div class="absolute inset-2 border-4 border-primary rounded-full border-t-transparent animate-spin"></div>
+                    <div class="absolute inset-0 flex items-center justify-center text-3xl">✨</div>
+                  </div>
+                  <div class="text-xl font-bold text-gradient mb-3">{{ thinkingSteps[currentThinkingStep] }}</div>
+                  <p class="text-sm text-foreground/60 leading-relaxed px-4">
+                    您的专属AI时尚顾问正在为您从衣柜挑选搭配并生成效果图，约需20秒，请稍候...
+                  </p>
+                </div>
+
+                <div v-else-if="aiResult" class="w-full h-full animate-fade-in p-1">
+                  <div class="relative group h-full">
+                    <img :src="aiResult.imageUrl" class="w-full h-full object-cover rounded-[22px] shadow-2xl" />
+                    <div class="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent"></div>
+                    <div class="absolute bottom-0 left-0 right-0 p-6 text-white">
+                      <div class="flex gap-2 mb-3">
+                        <span class="px-2 py-1 rounded bg-primary text-[10px] font-black uppercase">{{ aiResult.styleType }}</span>
+                        <span class="px-2 py-1 rounded bg-white/20 backdrop-blur-md text-[10px] font-black uppercase">{{ aiResult.occasion }}</span>
+                      </div>
+                      <h4 class="text-lg font-black mb-2 flex items-center gap-2">
+                        <el-icon><ChatDotRound /></el-icon> 定制搭配解析
+                      </h4>
+                      <p class="text-sm opacity-90 leading-relaxed font-medium">
+                        {{ displayedReasoning }}<span class="typing-cursor">|</span>
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                <div v-else class="text-center text-muted-foreground/40 opacity-50 p-12">
+                  <el-icon size="64" class="mb-4"><MagicStick /></el-icon>
+                  <p class="font-bold">等待您的灵感火花...</p>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       </transition>
@@ -496,7 +624,7 @@ onUnmounted(() => {
       </template>
     </div>
     
-    <div v-else class="animate-fade-in">
+    <div v-else-if="activeTab !== 'personal'" class="animate-fade-in">
       <!-- AI 推理画板 (仅在个人推荐且有数据时显示) -->
       <div v-if="activeTab === 'personal' && aiReasoning && outfits.length > 0" class="mb-8 p-6 bg-background/60 backdrop-blur-xl rounded-2xl border border-primary/30 shadow-[0_4px_24px_rgba(var(--primary-rgb),0.08)] animate-slide-up">
         <div class="flex items-start gap-4">
@@ -642,6 +770,18 @@ onUnmounted(() => {
   background: linear-gradient(to right, var(--el-color-primary), #6366f1);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
+}
+
+.ai-uploader :deep(.el-upload-dragger) {
+  @apply rounded-2xl border-2 border-dashed border-primary/20 bg-primary/5 transition-all;
+}
+
+.ai-uploader :deep(.el-upload-dragger:hover) {
+  @apply border-primary/50 bg-primary/10;
+}
+
+.custom-textarea :deep(.el-textarea__inner) {
+  @apply rounded-2xl border-primary/10 bg-primary/5 p-4 transition-all focus:border-primary/50;
 }
 
 :deep(.custom-tabs .el-tabs__nav-wrap::after) {

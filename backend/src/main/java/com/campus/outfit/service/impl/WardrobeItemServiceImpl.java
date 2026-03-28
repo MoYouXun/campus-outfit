@@ -1,5 +1,6 @@
 package com.campus.outfit.service.impl;
 
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.campus.outfit.entity.WardrobeItem;
 import com.campus.outfit.mapper.WardrobeItemMapper;
@@ -9,6 +10,8 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
+
+import java.util.List;
 
 /**
  * 衣柜单品 Service 实现类
@@ -21,26 +24,24 @@ public class WardrobeItemServiceImpl extends ServiceImpl<WardrobeItemMapper, War
     private MinioService minioService;
 
     @Override
-    public WardrobeItem uploadAndAnalyzeItem(MultipartFile file, Long userId) {
+    public WardrobeItem uploadItem(MultipartFile file, Long userId, String type, String color, String style, String season) {
         try {
             // 1. 上传图片到 MinIO
             String objectName = minioService.uploadImage(file);
             String originalImageUrl = minioService.getImageUrl(objectName);
 
-            // 2. 创建 Mock AI 识别结果
+            // 2. 创建单品信息
             WardrobeItem item = new WardrobeItem();
             item.setUserId(userId);
+            item.setObjectName(objectName);
             item.setOriginalImageUrl(originalImageUrl);
-            
-            // 模拟 AI 识别数据
-            item.setCategoryMain("上装");
-            item.setCategorySub("卫衣");
-            item.setColor("黑色");
-            item.setMaterial("纯棉");
-            item.setSeason("秋,冬");
+            item.setCategoryMain(type);
+            item.setColor(color);
+            item.setStyle(style);
+            item.setSeason(season);
             
             // 模拟原始 AI 标签 JSON
-            String mockAiTags = "{\"style\": \"休闲\", \"elements\": [\"连帽\", \"宽松\"], \"accuracy\": 0.98}";
+            String mockAiTags = String.format("{\"style\": \"%s\", \"originalType\": \"%s\"}", style, type);
             item.setAiRawTags(mockAiTags);
 
             // 3. 持久化到数据库
@@ -48,8 +49,60 @@ public class WardrobeItemServiceImpl extends ServiceImpl<WardrobeItemMapper, War
 
             return item;
         } catch (Exception e) {
-            log.error("单品上传与 AI 分析失败", e);
+            log.error("单品上传失败", e);
             throw new RuntimeException("衣柜单品处理异常：" + e.getMessage());
         }
+    }
+
+    @Override
+    public List<WardrobeItem> getByUserId(Long userId) {
+        return this.list(new LambdaQueryWrapper<WardrobeItem>()
+                .eq(WardrobeItem::getUserId, userId)
+                .orderByDesc(WardrobeItem::getCreateTime));
+    }
+
+    @Override
+    public List<WardrobeItem> getByType(Long userId, String type) {
+        return this.list(new LambdaQueryWrapper<WardrobeItem>()
+                .eq(WardrobeItem::getUserId, userId)
+                .eq(WardrobeItem::getCategoryMain, type)
+                .orderByDesc(WardrobeItem::getCreateTime));
+    }
+
+    @Override
+    public List<WardrobeItem> getBySeason(Long userId, String season) {
+        return this.list(new LambdaQueryWrapper<WardrobeItem>()
+                .eq(WardrobeItem::getUserId, userId)
+                .eq(WardrobeItem::getSeason, season)
+                .orderByDesc(WardrobeItem::getCreateTime));
+    }
+
+    @Override
+    public List<WardrobeItem> getByStyle(Long userId, String style) {
+        return this.list(new LambdaQueryWrapper<WardrobeItem>()
+                .eq(WardrobeItem::getUserId, userId)
+                .eq(WardrobeItem::getStyle, style)
+                .orderByDesc(WardrobeItem::getCreateTime));
+    }
+
+    @Override
+    public boolean deleteItem(Long id) {
+        WardrobeItem item = this.getById(id);
+        if (item == null) {
+            return false;
+        }
+
+        // 1. 从 MinIO 删除文件
+        if (item.getObjectName() != null) {
+            try {
+                minioService.deleteImage(item.getObjectName());
+            } catch (Exception e) {
+                log.error("从 MinIO 删除文件失败, id: {}, objectName: {}", id, item.getObjectName(), e);
+                // 即使 MinIO 失败，通常也继续删除数据库记录，或者根据业务决定
+            }
+        }
+
+        // 2. 从数据库逻辑删除
+        return this.removeById(id);
     }
 }

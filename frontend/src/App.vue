@@ -3,7 +3,7 @@ import { RouterView, useRouter, useRoute } from 'vue-router'
 import { computed } from 'vue'
 import { useUserStore } from '@/stores/user'
 import { ElMessage, ElIcon } from 'element-plus'
-import { MagicStick, TrendCharts, Opportunity, Sunny, UserFilled } from '@element-plus/icons-vue'
+import { MagicStick, TrendCharts, Opportunity, UserFilled } from '@element-plus/icons-vue'
 
 const router = useRouter()
 const route = useRoute()
@@ -17,8 +17,7 @@ const isAdmin = computed(() => userStore.userInfo?.role === 'ADMIN')
 const isAuthPage = computed(() => ['/login', '/register'].includes(route.path))
 
 const navItems = [
-  { label: '首页', path: '/', icon: Sunny },
-  { label: '社区', path: '/community', icon: Opportunity },
+  { label: '社区', path: '/', icon: Opportunity },
   { label: 'AI 穿搭 PK', path: '/ai-pk', icon: TrendCharts },
   { label: '魔法试衣间', path: '/ai-try-on', icon: MagicStick },
   { label: '推荐', path: '/recommend', icon: MagicStick },

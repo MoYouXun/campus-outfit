@@ -46,6 +46,9 @@ api:
     key: 2dd2e18c-9d00-4e1d-829b-e28ea619d74a
     endpoint-lite: ep-20260324191252-nqnng
     endpoint-mini: ep-20260325141225-h7lw6
+  volcengine:
+    ak: AKLTZTc0NmY5NzA0Yjc0NGZlZDljOTNmMTg3ZWRjOTU0NzU
+    sk: TURVNE5qSTVNbUZtWkdNM05EUTVNR0V4TmpZNE5UWmpOV1l5TWpFeE1UVQ==
     
 # 系统业务配置
 app:

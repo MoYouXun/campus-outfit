@@ -289,10 +289,14 @@ public class AiServiceImpl implements AiService {
                 Object submitResp = visualService.cvSubmitTask(submitBody);
                 JsonNode submitData = objectMapper.valueToTree(submitResp);
                 
-                if (submitData.path("code").asInt() != 10000 && !submitData.has("task_id")) {
-                     String error = submitData.path("message").asText("Unknown Error");
-                     log.error("提交任务失败响应: {}", submitData);
-                     throw new RuntimeException("提交换装任务失败: " + error);
+                int code = submitData.path("code").asInt();
+                if (code != 10000 && !submitData.has("task_id")) {
+                     String msg = submitData.path("message").asText("Unknown Error");
+                     log.error("提交任务失败响应: code={}, msg={}", code, msg);
+                     if (msg.toLowerCase().contains("risk") || code == 50218 || code == 50411 || code == 50511) {
+                         throw new RuntimeException("图片触发安全风控，请检查是否包含违规或敏感内容，更换后重试");
+                     }
+                     throw new RuntimeException("AI换装提交服务异常：" + msg);
                 }
                 taskId = submitData.path("data").path("task_id").asText();
             } catch (Exception e) {
@@ -318,9 +322,14 @@ public class AiServiceImpl implements AiService {
                     Object queryResp = visualService.cvGetResult(queryBody);
                     JsonNode queryResult = objectMapper.valueToTree(queryResp);
 
-                    if (queryResult.path("code").asInt() != 10000) {
-                        String error = queryResult.path("message").asText("Unknown Error");
-                        throw new RuntimeException("查询失败: " + error);
+                    int qCode = queryResult.path("code").asInt();
+                    if (qCode != 10000) {
+                        String qMsg = queryResult.path("message").asText("Unknown Error");
+                        log.error("查询任务失败: code={}, msg={}", qCode, qMsg);
+                        if (qMsg.toLowerCase().contains("risk") || qCode == 50218 || qCode == 50411 || qCode == 50511) {
+                            throw new RuntimeException("图片触发安全风控，请检查是否包含违规或敏感内容，更换后重试");
+                        }
+                        throw new RuntimeException("AI换装结果轮询异常：" + qMsg);
                     }
 
                     JsonNode dataNode = queryResult.path("data");

@@ -17,12 +17,4 @@ public interface AiService {
      * @return 推荐结果
      */
     AiRecommendationResult recommendOutfit(String prompt);
-
-    /**
-     * 生成 AI 换装后的图片
-     * @param personImageUrl 人像图Url
-     * @param outfitImageUrl 衣服图Url
-     * @return 生成的图片Base64或链接
-     */
-    String generateTryOnImage(String personImageUrl, String outfitImageUrl);
 }

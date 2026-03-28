@@ -5,8 +5,6 @@ import jakarta.annotation.PostConstruct;
 import com.campus.outfit.dto.AiAnalysisResult;
 import com.campus.outfit.dto.AiRecommendationResult;
 import com.campus.outfit.service.AiService;
-import com.volcengine.service.visual.IVisualService;
-import com.volcengine.service.visual.impl.VisualServiceImpl;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.beans.factory.annotation.Value;
@@ -16,7 +14,6 @@ import org.springframework.http.MediaType;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.util.DigestUtils;
-import org.springframework.http.ResponseEntity;
 import org.springframework.web.client.RestTemplate;
 
 import lombok.extern.slf4j.Slf4j;
@@ -42,14 +39,6 @@ public class AiServiceImpl implements AiService {
     @Value("${api.doubao.endpoint-mini:}")
     private String endpointMini;
 
-    @Value("${api.volcengine.ak:}")
-    private String volcAk;
-
-    @Value("${api.volcengine.sk:}")
-    private String volcSk;
-
-    private IVisualService visualService;
-
     @Autowired
     private org.springframework.data.redis.core.RedisTemplate<String, Object> redisTemplate;
 
@@ -68,12 +57,6 @@ public class AiServiceImpl implements AiService {
 
     @PostConstruct
     public void init() {
-        log.info("[AI Service] 正在初始化火山引擎视觉服务客户端...");
-        // 1.0.x SDK 统一采用单例工厂模式获取实例
-        this.visualService = VisualServiceImpl.getInstance();
-        this.visualService.setAccessKey(volcAk);
-        this.visualService.setSecretKey(volcSk);
-        log.info("[AI Service] 火山引擎视觉服务客户端初始化完成");
     }
 
     @Override
@@ -260,156 +243,6 @@ public class AiServiceImpl implements AiService {
         }
     }
 
-    @Override
-    public String generateTryOnImage(String personImageUrl, String outfitImageUrl) {
-        log.info("[AI Try-On] 切入异步换装模型 DressingDiffusionV2. 人像: {}, 衣服: {}", personImageUrl, outfitImageUrl);
-        try {
-            // 第一步：提交任务
-            // 1. 下载图片并转换为 Base64
-            String personBase64;
-            String outfitBase64;
-            try {
-                log.info("[AI Try-On] 正在下载图片并转换为 Base64 格式...");
-                log.info("[AI Try-On] 请求下载人像图: {}", personImageUrl);
-                byte[] personBytes = downloadImageBytes(personImageUrl);
-                
-                log.info("[AI Try-On] 请求下载服装图: {}", outfitImageUrl);
-                byte[] outfitBytes = downloadImageBytes(outfitImageUrl);
-                
-                personBase64 = java.util.Base64.getEncoder().encodeToString(personBytes);
-                outfitBase64 = java.util.Base64.getEncoder().encodeToString(outfitBytes);
-                log.info("[AI Try-On] 图片 Base64 转换完成");
-            } catch (Exception e) {
-                log.error("[AI Try-On] 图片预处理阶段触发异常: {}", e.getMessage());
-                // 如果已经是我们的业务包装异常，直接透传；否则重新包装
-                throw (e instanceof RuntimeException) ? (RuntimeException) e : new RuntimeException("图片预处理失败: 无法访问图片地址", e);
-            }
-
-            // 2. 构建基于 Base64 的请求报文
-            Map<String, Object> submitBody = new HashMap<>();
-            submitBody.put("req_key", "dressing_diffusionV2");
-            submitBody.put("req_image_store_type", 0); // 0 表示使用 binary_data_base64 传输
-            submitBody.put("binary_data_base64", Arrays.asList(personBase64, outfitBase64));
-            
-            // model 节点目前不再需要传递 url
-            submitBody.put("model", new HashMap<String, String>());
-            
-            Map<String, Object> garment = new HashMap<>();
-            Map<String, String> garmentItem = new HashMap<>();
-            garmentItem.put("type", "full");
-            // 移除原有的 url 传递
-            garment.put("data", Arrays.asList(garmentItem));
-            submitBody.put("garment", garment);
-
-            log.info("[AI Try-On] 正在通过通用 JSON 模式提交异常任务...");
-            // 采用通用基于 Map 序列化方式，规避具体的 Request 类引用
-            String taskId = "";
-            try {
-                // 注意：由于 visualService 实例是 SDK 生成的 IVisualService，
-                // 其具体方法可能对参数类型有要求，若无法直接使用 Map，则采用通用反射调用或退化至底层方法。
-                // 暂时按照“基于 JSON 序列化的通用调用方式”的思路：
-                // 如果 SDK 支持直接传 Map 或通过 objectMapper 转换
-                Object submitResp = visualService.cvSubmitTask(submitBody);
-                JsonNode submitData = objectMapper.valueToTree(submitResp);
-                
-                int code = submitData.path("code").asInt();
-                if (code != 10000 && !submitData.has("task_id")) {
-                     String msg = submitData.path("message").asText("Unknown Error");
-                     log.error("提交任务失败响应: code={}, msg={}", code, msg);
-                     if (msg.toLowerCase().contains("risk") || code == 50218 || code == 50411 || code == 50511) {
-                         throw new RuntimeException("图片触发安全风控，请检查是否包含违规或敏感内容，更换后重试");
-                     }
-                     throw new RuntimeException("AI换装提交服务异常：" + msg);
-                }
-                taskId = submitData.path("data").path("task_id").asText();
-            } catch (Exception e) {
-                String errMsg = e.getMessage();
-                log.error("提交阶段 SDK 异常: {}", errMsg);
-                if (errMsg != null && (errMsg.contains("50218") || errMsg.contains("50411") || errMsg.contains("50511") || errMsg.toLowerCase().contains("risk"))) {
-                    throw new RuntimeException("图片触发安全风控，请检查是否包含违规或敏感内容，更换后重试");
-                }
-                throw new RuntimeException("AI换装提交服务失败: " + errMsg, e);
-            }
-
-            log.info("[AI Try-On] 任务提交成功, task_id: {}", taskId);
-
-            // 第二步：轮询结果
-            int maxAttempts = 40;
-            int attempt = 0;
-            while (attempt < maxAttempts) {
-                attempt++;
-                log.info("[AI Try-On] 进入异步状态轮询 (第 {}/{} 次)...", attempt, maxAttempts);
-                Thread.sleep(3000);
-                
-                Map<String, Object> queryBody = new HashMap<>();
-                queryBody.put("req_key", "dressing_diffusionV2");
-                queryBody.put("task_id", taskId);
-                // 必须显式要求返回 URL，否则 image_urls 为空且默认只返回 Base64
-                queryBody.put("req_json", "{\"return_url\":true}");
-
-                try {
-                    Object queryResp = visualService.cvGetResult(queryBody);
-                    JsonNode queryResult = objectMapper.valueToTree(queryResp);
-
-                    int qCode = queryResult.path("code").asInt();
-                    if (qCode != 10000) {
-                        String qMsg = queryResult.path("message").asText("Unknown Error");
-                        log.error("查询任务失败: code={}, msg={}", qCode, qMsg);
-                        if (qMsg.toLowerCase().contains("risk") || qCode == 50218 || qCode == 50411 || qCode == 50511) {
-                            throw new RuntimeException("图片触发安全风控，请检查是否包含违规或敏感内容，更换后重试");
-                        }
-                        throw new RuntimeException("AI换装结果轮询异常：" + qMsg);
-                    }
-
-                    JsonNode dataNode = queryResult.path("data");
-                    String status = dataNode.path("status").asText();
-                    log.info("[AI Try-On] 任务 {} 当前状态: {}", taskId, status);
-
-                    if ("done".equals(status)) {
-                        JsonNode imageUrls = dataNode.path("image_urls");
-                        if (imageUrls.isArray() && !imageUrls.isEmpty()) {
-                            String finalImageUrl = imageUrls.get(0).asText();
-                            log.info("[AI Try-On] 最终换装业务完成！结果图 URL: {}", finalImageUrl);
-                            return finalImageUrl;
-                        }
-
-                        JsonNode base64s = dataNode.path("binary_data_base64");
-                        if (base64s.isArray() && !base64s.isEmpty()) {
-                            log.info("[AI Try-On] 最终换装业务完成！返回 Base64 数据。");
-                            // 如果火山引擎返回了 Base64，为其拼接 Data URI 前缀
-                            return "data:image/png;base64," + base64s.get(0).asText();
-                        }
-
-                        log.error("任务已完成但无图片数据, 报文: {}", queryResult);
-                        throw new RuntimeException("大模型任务已完成，但在返回体中未能提取到图片URL或Base64数据！");
-                    } else if ("generating".equals(status) || "in_queue".equals(status)) {
-                        continue; 
-                    } else {
-                        log.error("任务执行异常退出, 最终 JSON: {}", queryResult);
-                        throw new RuntimeException("换装任务执行异常, 状态: " + status);
-                    }
-                } catch (Exception ex) {
-                    String qErrMsg = ex.getMessage();
-                    if (qErrMsg != null && (qErrMsg.contains("50218") || qErrMsg.contains("50411") || qErrMsg.contains("50511") || qErrMsg.toLowerCase().contains("risk"))) {
-                        log.error("轮询中触发安全风控: {}", qErrMsg);
-                        throw new RuntimeException("图片触发安全风控，请检查是否包含违规或敏感内容，更换后重试");
-                    }
-                    log.warn("查询环节临时异常: {}, 任务 ID: {}", qErrMsg, taskId);
-                    if (attempt >= maxAttempts) throw new RuntimeException("轮询结果最终异常: " + qErrMsg, ex);
-                }
-            }
-            throw new RuntimeException("异步换装任务处理超时（120秒）");
-
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            throw new RuntimeException("换装流程由于线程中断而终止");
-        } catch (Exception e) {
-            log.error("[AI Try-On] 流程故障", e);
-            throw new RuntimeException("全量换装流程失败: " + e.getMessage());
-        }
-    }
-
-
     /**
      * 从 AI 回复文本中提取 JSON 内容。
      * 支持 ```json...``` 代码块和普通 {} 两种格式。
@@ -437,40 +270,5 @@ public class AiServiceImpl implements AiService {
         if (start != -1 && end != -1)
             return content.substring(start, end + 1);
         return content.trim();
-    }
-
-    /**
-     * 严格模式下载图片字节流，并进行 Content-Type 校验。
-     * 防止下载到 XML 错误报文导致 AI 解码失败 (50207)。
-     */
-    private byte[] downloadImageBytes(String imageUrl) {
-        // 使用 URI 包装以防止 RestTemplate 二次 UrlEncode 破坏 MinIO 签名
-        java.net.URI uri = java.net.URI.create(imageUrl);
-        ResponseEntity<byte[]> response = restTemplate.getForEntity(uri, byte[].class);
-        
-        if (!response.getStatusCode().is2xxSuccessful() || response.getBody() == null) {
-            throw new RuntimeException("无法下载图片，HTTP状态码: " + response.getStatusCode());
-        }
-        
-        byte[] bytes = response.getBody();
-        if (bytes.length < 4) {
-            throw new RuntimeException("图片文件内容过小，只有 " + bytes.length + " 字节！");
-        }
-
-        // 校验 Magic Number (魔数)
-        // JPEG: FF D8
-        boolean isJpeg = (bytes[0] == (byte)0xFF && bytes[1] == (byte)0xD8);
-        // PNG: 89 50 4E 47
-        boolean isPng = (bytes[0] == (byte)0x89 && bytes[1] == (byte)0x50 && bytes[2] == (byte)0x4E && bytes[3] == (byte)0x47);
-
-        if (!isJpeg && !isPng) {
-            // 如果不是真正的图片，提取前四个字节的十六进制和文本预览以便排查
-            String hexPrefix = String.format("%02X %02X %02X %02X", bytes[0], bytes[1], bytes[2], bytes[3]);
-            String textTry = new String(bytes, 0, Math.min(bytes.length, 100), java.nio.charset.StandardCharsets.UTF_8);
-            log.error("[AI Try-On] 图片格式非法或不受支持！URL: {}, 文件头(Hex): {}, 文本预览: {}", imageUrl, hexPrefix, textTry);
-            throw new RuntimeException("您上传的图片不是标准的 JPG 或 PNG 格式（可能是损坏的文件或不支持的 WebP 格式）。请使用系统自带截图工具重新保存为标准 JPG 格式后再上传重试！");
-        }
-        
-        return bytes;
     }
 }

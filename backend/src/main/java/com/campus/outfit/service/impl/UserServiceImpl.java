@@ -17,7 +17,6 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.util.StringUtils;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -61,10 +60,6 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
 
     @Override
     public Result<Map<String, Object>> login(UserAuthRequest request) {
-        if (request == null || !StringUtils.hasText(request.getUsername()) || !StringUtils.hasText(request.getPassword())) {
-            return Result.fail("用户名或密码不能为空");
-        }
-
         String username = request.getUsername();
         String password = request.getPassword();
 
@@ -79,7 +74,7 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
         map.put("token", token);
         map.put("userId", user.getId());
         map.put("username", user.getUsername());
-        map.put("role", user.getRole() != null ? user.getRole().name() : "NORMAL");
+        map.put("role", user.getRole().name());
         map.put("avatar", user.getAvatar());
 
         return Result.success(map);

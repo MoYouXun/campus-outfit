@@ -34,7 +34,7 @@ public class JwtUtils {
         return Jwts.builder()
                 .subject(user.getUsername())
                 .claim("userId", user.getId())
-                .claim("role", user.getRole().name())
+                .claim("role", (user.getRole() != null ? user.getRole().name() : User.Role.NORMAL.name()))
                 .issuedAt(new Date())
                 .expiration(new Date(System.currentTimeMillis() + expireTime))
                 .signWith(key)

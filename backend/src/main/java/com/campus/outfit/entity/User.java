@@ -1,6 +1,7 @@
 package com.campus.outfit.entity;
 
 import com.baomidou.mybatisplus.annotation.*;
+import com.baomidou.mybatisplus.annotation.EnumValue;
 import com.fasterxml.jackson.annotation.JsonFormat;
 import lombok.Data;
 
@@ -44,7 +45,9 @@ public class User implements Serializable {
 
     // 角色枚举
     public enum Role {
+        @EnumValue
         NORMAL,
+        @EnumValue
         ADMIN
     }
 }

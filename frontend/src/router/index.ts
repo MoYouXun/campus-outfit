@@ -30,6 +30,11 @@ const router = createRouter({
       component: () => import('../views/OutfitPK.vue')
     },
     {
+      path: '/ai-try-on',
+      name: 'AiTryOn',
+      component: () => import('@/views/AiTryOn.vue')
+    },
+    {
       path: '/profile/:id',
       name: 'profile',
       component: () => import('@/views/Profile.vue')

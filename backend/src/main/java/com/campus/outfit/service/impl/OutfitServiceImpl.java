@@ -1,6 +1,7 @@
 package com.campus.outfit.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
@@ -15,10 +16,8 @@ import com.campus.outfit.service.LikeService;
 import com.campus.outfit.service.MinioService;
 import com.campus.outfit.service.OutfitService;
 import com.campus.outfit.service.TopicService;
-import com.campus.outfit.enums.OutfitStatusEnum;
 import com.campus.outfit.utils.Result;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -29,7 +28,6 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-@Slf4j
 @Service
 public class OutfitServiceImpl extends ServiceImpl<OutfitMapper, Outfit> implements OutfitService {
 
@@ -54,9 +52,6 @@ public class OutfitServiceImpl extends ServiceImpl<OutfitMapper, Outfit> impleme
     @Autowired
     private FavoriteService favoriteService;
 
-    @Autowired
-    private org.springframework.data.redis.core.StringRedisTemplate redisTemplate;
-
     @Override
     public IPage<Outfit> getPublicOutfits(int page, int size) {
         return getPublicOutfits(page, size, "latest", null, null, null);
@@ -66,7 +61,7 @@ public class OutfitServiceImpl extends ServiceImpl<OutfitMapper, Outfit> impleme
     public IPage<Outfit> getPublicOutfits(int page, int size, String sortBy, Long topicId, Long targetUserId, Long currentUserId) {
         LambdaQueryWrapper<Outfit> wrapper = new LambdaQueryWrapper<Outfit>()
                 .eq(Outfit::getIsPublic, true)
-                .eq(Outfit::getStatus, OutfitStatusEnum.PUBLISHED.getCode());
+                .eq(Outfit::getStatus, "PUBLISHED");
         
         if (targetUserId != null) {
             wrapper.eq(Outfit::getUserId, targetUserId);
@@ -114,7 +109,7 @@ public class OutfitServiceImpl extends ServiceImpl<OutfitMapper, Outfit> impleme
         
         LambdaQueryWrapper<Outfit> wrapper = new LambdaQueryWrapper<Outfit>()
                 .eq(Outfit::getIsPublic, true)
-                .eq(Outfit::getStatus, OutfitStatusEnum.PUBLISHED.getCode())
+                .eq(Outfit::getStatus, "PUBLISHED")
                 .in(Outfit::getUserId, followingIds)
                 .orderByDesc(Outfit::getCreateTime);
         
@@ -128,33 +123,34 @@ public class OutfitServiceImpl extends ServiceImpl<OutfitMapper, Outfit> impleme
 
     @Override
     public Result<AiAnalysisResult> uploadAndAnalyze(List<MultipartFile> files) {
-        log.info("收到上传请求，文件数量: {}", files != null ? files.size() : 0);
+        System.out.println("[DEBUG] 收到上传请求，文件数量: " + (files != null ? files.size() : 0));
         if (files == null || files.isEmpty()) {
             return Result.fail("请上传图片");
         }
 
         try {
-            log.info("开始处理文件上传...");
+            System.out.println("[DEBUG] 开始处理文件上传...");
             List<String> urls = new ArrayList<>();
             for (MultipartFile file : files) {
-                log.info("处理文件: {}, 大小: {} bytes", file.getOriginalFilename(), file.getSize());
+                System.out.println("[DEBUG] 处理文件: " + file.getOriginalFilename() + ", 大小: " + file.getSize() + " bytes");
                 String objectName = minioService.uploadImage(file);
-                log.info("文件上传成功，对象名: {}", objectName);
+                System.out.println("[DEBUG] 文件上传成功，对象名: " + objectName);
                 String url = minioService.getImageUrl(objectName);
-                log.info("获取图片URL成功: {}", url);
+                System.out.println("[DEBUG] 获取图片URL成功: " + url);
                 urls.add(url);
             }
 
-            log.info("开始调用AI分析...");
+            System.out.println("[DEBUG] 开始调用AI分析...");
             // 针对第一张图片进行 AI 分析（或可改为合成后分析，此处简化取首张）
             AiAnalysisResult analysis = aiService.analyzeOutfit(files.get(0).getBytes());
-            log.info("AI分析成功");
+            System.out.println("[DEBUG] AI分析成功");
             
             // 将文件列表 URL 传回前端，方便后续发布阶段保存
             analysis.setImageUrls(urls);
             return Result.success(analysis);
         } catch (Exception e) {
-            log.error("分析失败，异常信息: ", e);
+            System.out.println("[DEBUG] 分析失败，异常信息: ");
+            e.printStackTrace();
             return Result.fail("分析失败: " + e.getMessage());
         }
     }
@@ -163,13 +159,13 @@ public class OutfitServiceImpl extends ServiceImpl<OutfitMapper, Outfit> impleme
     @Transactional
     public Result<String> publishOutfit(Outfit outfit) {
         try {
-            log.info("正在发布穿搭: {}", outfit.getTitle());
+            System.out.println("[DEBUG] 正在发布穿搭: " + outfit.getTitle());
             // 设置默认值
             outfit.setLikeCount(0);
             outfit.setCommentCount(0);
             outfit.setFavCount(0);
             outfit.setViewCount(0);
-            outfit.setStatus(OutfitStatusEnum.PUBLISHED.getCode());
+            outfit.setStatus("PUBLISHED");
             
             // 设置缩略图URL
             if (outfit.getImageUrls() != null && !outfit.getImageUrls().isEmpty()) {
@@ -186,7 +182,7 @@ public class OutfitServiceImpl extends ServiceImpl<OutfitMapper, Outfit> impleme
                     aiMap.put("suggestion", outfit.getDescription());
                     outfit.setAiAnalysis(objectMapper.writeValueAsString(aiMap));
                 } catch (Exception e) {
-                    log.warn("序列化 AI 分析结果失败: {}", e.getMessage());
+                    System.out.println("[WARNING] 序列化 AI 分析结果失败: " + e.getMessage());
                 }
             }
             
@@ -201,10 +197,11 @@ public class OutfitServiceImpl extends ServiceImpl<OutfitMapper, Outfit> impleme
                 topicService.incrementOutfitCount(outfit.getTopicId());
             }
 
-            log.info("发布成功，ID: {}", outfit.getId());
+            System.out.println("[DEBUG] 发布成功，ID: " + outfit.getId());
             return Result.success("发布成功");
         } catch (Exception e) {
-            log.error("发布失败，异常: ", e);
+            System.err.println("[ERROR] 发布失败，异常: " + e.getMessage());
+            e.printStackTrace();
             return Result.fail("发布失败，数据库保存异常：" + e.getMessage());
         }
     }
@@ -248,12 +245,13 @@ public class OutfitServiceImpl extends ServiceImpl<OutfitMapper, Outfit> impleme
 
             return Result.success("帖子删除成功");
         } catch (Exception e) {
-            log.error("帖子删除失败: ", e);
+            e.printStackTrace();
             return Result.fail("帖子删除失败: " + e.getMessage());
         }
     }
 
     @Override
+    @Transactional
     public Result<String> incrementViewCount(Long id) {
         try {
             // 检查帖子是否存在
@@ -262,14 +260,14 @@ public class OutfitServiceImpl extends ServiceImpl<OutfitMapper, Outfit> impleme
                 return Result.fail("帖子不存在");
             }
 
-            // 改用 Redis 进行浏览量自增
-            String key = "outfit:view_count:" + id;
-            redisTemplate.opsForValue().increment(key);
-            log.info("帖子 {} 浏览量已增加到 Redis", id);
+            // 增加浏览计数
+            update(new LambdaUpdateWrapper<Outfit>()
+                    .eq(Outfit::getId, id)
+                    .setSql("view_count = view_count + 1"));
 
             return Result.success("浏览计数增加成功");
         } catch (Exception e) {
-            log.error("增加浏览量失败: {}", e.getMessage());
+            System.err.println("[ERROR] 增加浏览量失败: " + e.getMessage());
             return Result.fail("浏览计数增加失败: " + e.getMessage());
         }
     }
@@ -304,7 +302,7 @@ public class OutfitServiceImpl extends ServiceImpl<OutfitMapper, Outfit> impleme
                 outfit.setImageUrls(newUrls);
             }
         } catch (Exception e) {
-            log.warn("刷新穿搭图片URL失败: {}", e.getMessage());
+            System.err.println("[WARNING] 刷新穿搭图片URL失败: " + e.getMessage());
         }
     }
 

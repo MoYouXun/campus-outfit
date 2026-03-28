@@ -16,6 +16,7 @@ import org.springframework.http.MediaType;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.util.DigestUtils;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.client.RestTemplate;
 
 import lombok.extern.slf4j.Slf4j;
@@ -270,21 +271,18 @@ public class AiServiceImpl implements AiService {
             try {
                 log.info("[AI Try-On] 正在下载图片并转换为 Base64 格式...");
                 log.info("[AI Try-On] 请求下载人像图: {}", personImageUrl);
-                // 使用 URI 绕过 RestTemplate 的默认字符串二次编码（防止破坏 MinIO 的直链签名）
-                byte[] personBytes = restTemplate.getForObject(java.net.URI.create(personImageUrl), byte[].class);
-                log.info("[AI Try-On] 请求下载服装图: {}", outfitImageUrl);
-                byte[] outfitBytes = restTemplate.getForObject(java.net.URI.create(outfitImageUrl), byte[].class);
+                byte[] personBytes = downloadImageBytes(personImageUrl);
                 
-                if (personBytes == null || outfitBytes == null) {
-                    throw new RuntimeException("未能成功获取图片字节流");
-                }
+                log.info("[AI Try-On] 请求下载服装图: {}", outfitImageUrl);
+                byte[] outfitBytes = downloadImageBytes(outfitImageUrl);
                 
                 personBase64 = java.util.Base64.getEncoder().encodeToString(personBytes);
                 outfitBase64 = java.util.Base64.getEncoder().encodeToString(outfitBytes);
                 log.info("[AI Try-On] 图片 Base64 转换完成");
             } catch (Exception e) {
-                log.error("[AI Try-On] 下载图片失败: {}", e.getMessage());
-                throw new RuntimeException("图片预处理失败: 无法访问图片地址", e);
+                log.error("[AI Try-On] 图片预处理阶段触发异常: {}", e.getMessage());
+                // 如果已经是我们的业务包装异常，直接透传；否则重新包装
+                throw (e instanceof RuntimeException) ? (RuntimeException) e : new RuntimeException("图片预处理失败: 无法访问图片地址", e);
             }
 
             // 2. 构建基于 Base64 的请求报文
@@ -346,6 +344,8 @@ public class AiServiceImpl implements AiService {
                 Map<String, Object> queryBody = new HashMap<>();
                 queryBody.put("req_key", "dressing_diffusionV2");
                 queryBody.put("task_id", taskId);
+                // 必须显式要求返回 URL，否则 image_urls 为空且默认只返回 Base64
+                queryBody.put("req_json", "{\"return_url\":true}");
 
                 try {
                     Object queryResp = visualService.cvGetResult(queryBody);
@@ -366,9 +366,22 @@ public class AiServiceImpl implements AiService {
                     log.info("[AI Try-On] 任务 {} 当前状态: {}", taskId, status);
 
                     if ("done".equals(status)) {
-                        String finalImageUrl = dataNode.path("image_urls").get(0).asText();
-                        log.info("[AI Try-On] 最终换装业务完成！结果图 URL: {}", finalImageUrl);
-                        return finalImageUrl;
+                        JsonNode imageUrls = dataNode.path("image_urls");
+                        if (imageUrls.isArray() && !imageUrls.isEmpty()) {
+                            String finalImageUrl = imageUrls.get(0).asText();
+                            log.info("[AI Try-On] 最终换装业务完成！结果图 URL: {}", finalImageUrl);
+                            return finalImageUrl;
+                        }
+
+                        JsonNode base64s = dataNode.path("binary_data_base64");
+                        if (base64s.isArray() && !base64s.isEmpty()) {
+                            log.info("[AI Try-On] 最终换装业务完成！返回 Base64 数据。");
+                            // 如果火山引擎返回了 Base64，为其拼接 Data URI 前缀
+                            return "data:image/png;base64," + base64s.get(0).asText();
+                        }
+
+                        log.error("任务已完成但无图片数据, 报文: {}", queryResult);
+                        throw new RuntimeException("大模型任务已完成，但在返回体中未能提取到图片URL或Base64数据！");
                     } else if ("generating".equals(status) || "in_queue".equals(status)) {
                         continue; 
                     } else {
@@ -424,5 +437,40 @@ public class AiServiceImpl implements AiService {
         if (start != -1 && end != -1)
             return content.substring(start, end + 1);
         return content.trim();
+    }
+
+    /**
+     * 严格模式下载图片字节流，并进行 Content-Type 校验。
+     * 防止下载到 XML 错误报文导致 AI 解码失败 (50207)。
+     */
+    private byte[] downloadImageBytes(String imageUrl) {
+        // 使用 URI 包装以防止 RestTemplate 二次 UrlEncode 破坏 MinIO 签名
+        java.net.URI uri = java.net.URI.create(imageUrl);
+        ResponseEntity<byte[]> response = restTemplate.getForEntity(uri, byte[].class);
+        
+        if (!response.getStatusCode().is2xxSuccessful() || response.getBody() == null) {
+            throw new RuntimeException("无法下载图片，HTTP状态码: " + response.getStatusCode());
+        }
+        
+        byte[] bytes = response.getBody();
+        if (bytes.length < 4) {
+            throw new RuntimeException("图片文件内容过小，只有 " + bytes.length + " 字节！");
+        }
+
+        // 校验 Magic Number (魔数)
+        // JPEG: FF D8
+        boolean isJpeg = (bytes[0] == (byte)0xFF && bytes[1] == (byte)0xD8);
+        // PNG: 89 50 4E 47
+        boolean isPng = (bytes[0] == (byte)0x89 && bytes[1] == (byte)0x50 && bytes[2] == (byte)0x4E && bytes[3] == (byte)0x47);
+
+        if (!isJpeg && !isPng) {
+            // 如果不是真正的图片，提取前四个字节的十六进制和文本预览以便排查
+            String hexPrefix = String.format("%02X %02X %02X %02X", bytes[0], bytes[1], bytes[2], bytes[3]);
+            String textTry = new String(bytes, 0, Math.min(bytes.length, 100), java.nio.charset.StandardCharsets.UTF_8);
+            log.error("[AI Try-On] 图片格式非法或不受支持！URL: {}, 文件头(Hex): {}, 文本预览: {}", imageUrl, hexPrefix, textTry);
+            throw new RuntimeException("您上传的图片不是标准的 JPG 或 PNG 格式（可能是损坏的文件或不支持的 WebP 格式）。请使用系统自带截图工具重新保存为标准 JPG 格式后再上传重试！");
+        }
+        
+        return bytes;
     }
 }

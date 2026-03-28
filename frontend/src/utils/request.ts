@@ -4,7 +4,7 @@ import type { AxiosInstance, InternalAxiosRequestConfig, AxiosResponse } from 'a
 // 创建 axios 实例
 const service: AxiosInstance = axios.create({
   baseURL: (import.meta as any).env.VITE_API_BASE_URL || '/api',
-  timeout: 60000 // 统一调整为 60s，以适配后端大模型的响应耗时
+  timeout: 300000 // 统一调整为 5分钟，以适配后端大模型的响应耗时
 })
 
 // 请求拦截器

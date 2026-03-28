@@ -300,8 +300,12 @@ public class AiServiceImpl implements AiService {
                 }
                 taskId = submitData.path("data").path("task_id").asText();
             } catch (Exception e) {
-                log.error("通用调用层异常: {}", e.getMessage());
-                throw new RuntimeException("SDK 通用调用失败: " + e.getMessage());
+                String errMsg = e.getMessage();
+                log.error("提交阶段 SDK 异常: {}", errMsg);
+                if (errMsg != null && (errMsg.contains("50218") || errMsg.contains("50411") || errMsg.contains("50511") || errMsg.toLowerCase().contains("risk"))) {
+                    throw new RuntimeException("图片触发安全风控，请检查是否包含违规或敏感内容，更换后重试");
+                }
+                throw new RuntimeException("AI换装提交服务失败: " + errMsg, e);
             }
 
             log.info("[AI Try-On] 任务提交成功, task_id: {}", taskId);
@@ -347,8 +351,13 @@ public class AiServiceImpl implements AiService {
                         throw new RuntimeException("换装任务执行异常, 状态: " + status);
                     }
                 } catch (Exception ex) {
-                    log.warn("查询环节临时异常: {}, 任务 ID: {}", ex.getMessage(), taskId);
-                    if (attempt >= maxAttempts) throw ex;
+                    String qErrMsg = ex.getMessage();
+                    if (qErrMsg != null && (qErrMsg.contains("50218") || qErrMsg.contains("50411") || qErrMsg.contains("50511") || qErrMsg.toLowerCase().contains("risk"))) {
+                        log.error("轮询中触发安全风控: {}", qErrMsg);
+                        throw new RuntimeException("图片触发安全风控，请检查是否包含违规或敏感内容，更换后重试");
+                    }
+                    log.warn("查询环节临时异常: {}, 任务 ID: {}", qErrMsg, taskId);
+                    if (attempt >= maxAttempts) throw new RuntimeException("轮询结果最终异常: " + qErrMsg, ex);
                 }
             }
             throw new RuntimeException("异步换装任务处理超时（120秒）");

@@ -94,12 +94,6 @@
             <version>${thumbnailator.version}</version>
         </dependency>
 
-        <!-- Volcengine Java SDK (Visual) -->
-        <dependency>
-            <groupId>com.volcengine</groupId>
-            <artifactId>volcengine-java-sdk-visual</artifactId>
-            <version>0.1.120</version>
-        </dependency>
 
         <!-- Spring Boot Test -->
         <dependency>

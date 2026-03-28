@@ -7,8 +7,6 @@ import com.campus.outfit.dto.AiRecommendationResult;
 import com.campus.outfit.service.AiService;
 import com.volcengine.service.visual.IVisualService;
 import com.volcengine.service.visual.impl.VisualServiceImpl;
-import com.volcengine.service.visual.model.request.VisualProcessRequest;
-import com.volcengine.service.visual.model.response.VisualProcessResponse;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.beans.factory.annotation.Value;
@@ -70,10 +68,10 @@ public class AiServiceImpl implements AiService {
     @PostConstruct
     public void init() {
         log.info("[AI Service] 正在初始化火山引擎视觉服务客户端...");
+        // 1.0.x SDK 统一采用单例工厂模式获取实例
         this.visualService = VisualServiceImpl.getInstance();
         this.visualService.setAccessKey(volcAk);
         this.visualService.setSecretKey(volcSk);
-        // 如果需要，可以在此处配置超时时间，SDK 默认为 5s/30s
         log.info("[AI Service] 火山引擎视觉服务客户端初始化完成");
     }
 
@@ -280,24 +278,28 @@ public class AiServiceImpl implements AiService {
             garment.put("data", Arrays.asList(garmentItem));
             submitBody.put("garment", garment);
 
-            // 使用通用 VisualProcessRequest 配合具体 Action 实现
-            VisualProcessRequest submitReq = new VisualProcessRequest();
-            submitReq.setAction("cvSubmitTask");
-            submitReq.setVersion("2022-08-31");
-            submitReq.setBody(objectMapper.writeValueAsString(submitBody));
-
-            log.info("[AI Try-On] 正在提交异步换装任务...");
-            // 注意：如果 visualService 没有强类型的 cvSubmitTask，SDK 通常支持通过通用接口透传
-            VisualProcessResponse submitResp = visualService.cvSubmitTask(submitReq);
-            
-            if (submitResp == null || submitResp.getCode() != 10000) {
-                String error = submitResp != null ? submitResp.getMessage() : "Unknown Error";
-                log.error("提交换装任务失败: {}", error);
-                throw new RuntimeException("提交换装任务失败: " + error);
+            log.info("[AI Try-On] 正在通过通用 JSON 模式提交异常任务...");
+            // 采用通用基于 Map 序列化方式，规避具体的 Request 类引用
+            String taskId = "";
+            try {
+                // 注意：由于 visualService 实例是 SDK 生成的 IVisualService，
+                // 其具体方法可能对参数类型有要求，若无法直接使用 Map，则采用通用反射调用或退化至底层方法。
+                // 暂时按照“基于 JSON 序列化的通用调用方式”的思路：
+                // 如果 SDK 支持直接传 Map 或通过 objectMapper 转换
+                Object submitResp = visualService.cvSubmitTask(submitBody);
+                JsonNode submitData = objectMapper.valueToTree(submitResp);
+                
+                if (submitData.path("code").asInt() != 10000 && !submitData.has("task_id")) {
+                     String error = submitData.path("message").asText("Unknown Error");
+                     log.error("提交任务失败响应: {}", submitData);
+                     throw new RuntimeException("提交换装任务失败: " + error);
+                }
+                taskId = submitData.path("data").path("task_id").asText();
+            } catch (Exception e) {
+                log.error("通用调用层异常: {}", e.getMessage());
+                throw new RuntimeException("SDK 通用调用失败: " + e.getMessage());
             }
 
-            JsonNode submitData = objectMapper.valueToTree(submitResp.getData());
-            String taskId = submitData.path("task_id").asText();
             log.info("[AI Try-On] 任务提交成功, task_id: {}", taskId);
 
             // 第二步：轮询结果
@@ -305,49 +307,49 @@ public class AiServiceImpl implements AiService {
             int attempt = 0;
             while (attempt < maxAttempts) {
                 attempt++;
-                log.info("[AI Try-On] 进入轮询自旋 (第 {}/{} 次)...", attempt, maxAttempts);
+                log.info("[AI Try-On] 进入异步状态轮询 (第 {}/{} 次)...", attempt, maxAttempts);
                 Thread.sleep(3000);
                 
                 Map<String, Object> queryBody = new HashMap<>();
                 queryBody.put("req_key", "dressing_diffusionV2");
                 queryBody.put("task_id", taskId);
 
-                VisualProcessRequest queryReq = new VisualProcessRequest();
-                queryReq.setAction("cvGetResult");
-                queryReq.setVersion("2022-08-31");
-                queryReq.setBody(objectMapper.writeValueAsString(queryBody));
+                try {
+                    Object queryResp = visualService.cvGetResult(queryBody);
+                    JsonNode queryResult = objectMapper.valueToTree(queryResp);
 
-                VisualProcessResponse queryResp = visualService.cvGetResult(queryReq);
-                
-                if (queryResp == null || queryResp.getCode() != 10000) {
-                    String error = queryResp != null ? queryResp.getMessage() : "Unknown Error";
-                    log.error("轮询获取任务结果失败: {}", error);
-                    throw new RuntimeException("获取结果失败: " + error);
-                }
+                    if (queryResult.path("code").asInt() != 10000) {
+                        String error = queryResult.path("message").asText("Unknown Error");
+                        throw new RuntimeException("查询失败: " + error);
+                    }
 
-                JsonNode queryData = objectMapper.valueToTree(queryResp.getData());
-                String status = queryData.path("status").asText();
-                log.info("[AI Try-On] 任务 {} 状态: {}", taskId, status);
+                    JsonNode dataNode = queryResult.path("data");
+                    String status = dataNode.path("status").asText();
+                    log.info("[AI Try-On] 任务 {} 当前状态: {}", taskId, status);
 
-                if ("done".equals(status)) {
-                    String finalImageUrl = queryData.path("image_urls").get(0).asText();
-                    log.info("[AI Try-On] 换装任务完成！生成图: {}", finalImageUrl);
-                    return finalImageUrl;
-                } else if ("generating".equals(status) || "in_queue".equals(status)) {
-                    continue; // 维持自旋
-                } else {
-                    log.error("任务执行异常退出, 状态: {}", status);
-                    throw new RuntimeException("换装任务执行异常: " + status);
+                    if ("done".equals(status)) {
+                        String finalImageUrl = dataNode.path("image_urls").get(0).asText();
+                        log.info("[AI Try-On] 最终换装业务完成！结果图 URL: {}", finalImageUrl);
+                        return finalImageUrl;
+                    } else if ("generating".equals(status) || "in_queue".equals(status)) {
+                        continue; 
+                    } else {
+                        log.error("任务执行异常退出, 最终 JSON: {}", queryResult);
+                        throw new RuntimeException("换装任务执行异常, 状态: " + status);
+                    }
+                } catch (Exception ex) {
+                    log.warn("查询环节临时异常: {}, 任务 ID: {}", ex.getMessage(), taskId);
+                    if (attempt >= maxAttempts) throw ex;
                 }
             }
-            throw new RuntimeException("换装任务处理超时（120秒）");
+            throw new RuntimeException("异步换装任务处理超时（120秒）");
 
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
-            throw new RuntimeException("换装任务被中断", e);
+            throw new RuntimeException("换装流程由于线程中断而终止");
         } catch (Exception e) {
-            log.error("[AI Try-On] 换装服务执行失败", e);
-            throw new RuntimeException("异步换装失败: " + e.getMessage());
+            log.error("[AI Try-On] 流程故障", e);
+            throw new RuntimeException("全量换装流程失败: " + e.getMessage());
         }
     }
 

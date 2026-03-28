@@ -2,7 +2,8 @@
 import { ref, onMounted, computed } from 'vue'
 import MasonryGallery from '../components/MasonryGallery.vue'
 import { ElMessage, ElScrollbar, ElMessageBox } from 'element-plus'
-import { Loading } from '@element-plus/icons-vue'
+import { Loading, Plus } from '@element-plus/icons-vue'
+import AiAnalysisCard from '@/components/AiAnalysisCard.vue'
 import { getCommunityFeed, getHotTopics, getFollowingFeed } from '../api/community'
 import { likeOutfit, unlikeOutfit, favoriteOutfit, unfavoriteOutfit } from '../api/interaction'
 import { deleteOutfit } from '../api/outfit'
@@ -19,6 +20,7 @@ const page = ref(1)
 
 const userStore = useUserStore()
 const router = useRouter()
+const isAnalysisVisible = ref(false)
 const currentUserId = computed(() => userStore.userInfo?.id || userStore.userInfo?.userId || null)
 
 const loadTopics = async () => {
@@ -245,5 +247,88 @@ const handleDelete = async (id: number) => {
       </el-scrollbar>
 
     </div>
+
+    <!-- AI 穿搭助手悬浮按钮 -->
+    <el-button 
+      type="primary" 
+      circle 
+      :icon="Plus" 
+      class="floating-action-btn shadow-2xl"
+      @click="isAnalysisVisible = true"
+    />
+
+    <!-- AI 分析对话框 -->
+    <el-dialog 
+      v-model="isAnalysisVisible" 
+      title="AI 校园穿搭助手" 
+      width="550px" 
+      append-to-body
+      destroy-on-close
+      class="glass-dialog"
+    >
+      <div class="px-2 pb-6">
+        <AiAnalysisCard />
+      </div>
+    </el-dialog>
   </div>
 </template>
+
+<style scoped>
+.floating-action-btn {
+  position: fixed;
+  bottom: 40px;
+  right: 40px;
+  z-index: 999;
+  width: 64px;
+  height: 64px;
+  font-size: 28px;
+  transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  box-shadow: 0 10px 25px -5px rgba(var(--el-color-primary-rgb), 0.5);
+  background: linear-gradient(135deg, var(--el-color-primary) 0%, #a855f7 100%);
+  border: none;
+}
+
+.floating-action-btn:hover {
+  transform: scale(1.1) rotate(90deg);
+  box-shadow: 0 15px 30px -5px rgba(var(--el-color-primary-rgb), 0.6);
+}
+
+.floating-action-btn:active {
+  transform: scale(0.9) rotate(90deg);
+}
+
+.custom-scrollbar::-webkit-scrollbar {
+  height: 4px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: rgba(var(--el-color-primary-rgb), 0.2);
+  border-radius: 10px;
+}
+
+:deep(.glass-dialog) {
+  border-radius: 28px;
+  overflow: hidden;
+  backdrop-filter: blur(20px);
+  background: rgba(255, 255, 255, 0.8);
+}
+
+.dark :deep(.glass-dialog) {
+  background: rgba(24, 24, 27, 0.9);
+}
+
+:deep(.glass-dialog .el-dialog__header) {
+  margin-right: 0;
+  padding: 24px 24px 10px;
+  font-weight: 800;
+}
+
+:deep(.glass-dialog .el-dialog__title) {
+  font-size: 1.25rem;
+  letter-spacing: -0.025em;
+}
+</style>

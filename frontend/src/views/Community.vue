@@ -6,7 +6,7 @@ import { Loading, Plus } from '@element-plus/icons-vue'
 import AiAnalysisCard from '@/components/AiAnalysisCard.vue'
 import { getCommunityFeed, getHotTopics, getFollowingFeed } from '../api/community'
 import { likeOutfit, unlikeOutfit, favoriteOutfit, unfavoriteOutfit } from '../api/interaction'
-import { deleteOutfit } from '../api/outfit'
+import { deleteOutfit, updateOutfitStatus } from '../api/outfit'
 import { useUserStore } from '@/stores/user'
 import { useRouter } from 'vue-router'
 
@@ -162,6 +162,19 @@ const handleDelete = async (id: number) => {
     }
   }
 }
+
+const handleToggleStatus = async (outfit: any, newStatus: string) => {
+  try {
+    await updateOutfitStatus(outfit.id, newStatus as any)
+    ElMessage.success('已移入私人衣橱')
+    const index = displayList.value.findIndex(item => item.id === outfit.id)
+    if (index !== -1) {
+      displayList.value.splice(index, 1)
+    }
+  } catch (error: any) {
+    ElMessage.error(error.response?.data?.message || '操作失败')
+  }
+}
 </script>
 
 <template>
@@ -243,6 +256,7 @@ const handleDelete = async (id: number) => {
           @like="handleLike" 
           @favorite="handleFavorite"
           @delete="handleDelete"
+          @toggle-status="(item) => handleToggleStatus(item, 'PRIVATE')"
         />
       </el-scrollbar>
 

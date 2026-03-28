@@ -13,28 +13,25 @@ import UploadImage from '@/components/UploadImage.vue'
 const route = useRoute()
 const userId = route.params.id as string
 const user = ref<any>(null)
-const outfits = ref<any[]>([])
+const outfits = ref<any[]>([]) // 公开列表
+const privateOutfits = ref<any[]>([]) // 私人衣橱
 const isFollowing = ref(false)
 const userStore = useUserStore()
 const isCurrentUser = ref(false)
 const currentUserId = computed(() => userStore.userInfo?.id || userStore.userInfo?.userId || null)
-const privateOutfits = ref<any[]>([])
 const activeTab = ref('public')
 
 const loadUser = async () => {
   try {
     const res: any = await getUserInfo(userId, currentUserId.value)
     user.value = res.user
-    isFollowing.value = res.following // Jackson 序列化 isFollowing 为 following
+    isFollowing.value = res.following
     
-    // 检查是否是当前用户
     isCurrentUser.value = user.value && currentUserId.value && Number(user.value.id) === Number(currentUserId.value)
     
-    // 加载该用户的穿搭：本人展示全部（含私密），他人仅展示公开
     let outfitsRes: any
     if (isCurrentUser.value) {
       outfitsRes = await getMyOutfits({ page: 1, size: 20 })
-      // 同步获取私人衣橱数据
       const privateRes: any = await getMyPrivateOutfits()
       privateOutfits.value = privateRes || []
     } else {
@@ -61,9 +58,11 @@ const handleDelete = async (id: number | string) => {
 }
 
 const handleToggleStatus = async (item: any, newStatus: string) => {
-  const actionText = newStatus === 'PRIVATE' ? '移入私人衣橱' : '发布到社区'
+  const isTargetPrivate = newStatus === 'PRIVATE'
+  const actionText = isTargetPrivate ? '移入私人衣橱' : '发布到社区'
+  
   try {
-    await ElMessageBox.confirm(`确定要将该穿搭${actionText}吗？`, '状态控制', {
+    await ElMessageBox.confirm(`确定要将该穿搭${actionText}吗？`, '状态流转', {
       confirmButtonText: '确定',
       cancelButtonText: '取消',
       type: 'info',
@@ -73,15 +72,19 @@ const handleToggleStatus = async (item: any, newStatus: string) => {
     await updateOutfitStatus(item.id, newStatus as any)
     ElMessage.success(`${actionText}成功`)
     
-    // 无刷新同步逻辑
-    if (newStatus === 'PRIVATE') {
+    // 本地模型状态更新，确保渲染一致
+    item.status = newStatus
+    
+    if (isTargetPrivate) {
+      // 从公开列表移除，加入私人列表
       const idx = outfits.value.findIndex(o => o.id === item.id)
-      if (idx > -1) outfits.value.splice(idx, 1)
-      privateOutfits.value.unshift({ ...item, status: 'PRIVATE' })
+      if (idx !== -1) outfits.value.splice(idx, 1)
+      privateOutfits.value.unshift(item)
     } else {
+      // 从私人列表移除，加入公开列表
       const idx = privateOutfits.value.findIndex(o => o.id === item.id)
-      if (idx > -1) privateOutfits.value.splice(idx, 1)
-      outfits.value.unshift({ ...item, status: 'PUBLISHED' })
+      if (idx !== -1) privateOutfits.value.splice(idx, 1)
+      outfits.value.unshift(item)
     }
   } catch (e: any) {
     if (e !== 'cancel') {

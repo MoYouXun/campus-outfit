@@ -222,6 +222,7 @@ public class OutfitServiceImpl extends ServiceImpl<OutfitMapper, Outfit> impleme
     public IPage<Outfit> getMyOutfits(Long userId, int page, int size) {
         IPage<Outfit> resultPage = page(new Page<>(page, size), new LambdaQueryWrapper<Outfit>()
                 .eq(Outfit::getUserId, userId)
+                .eq(Outfit::getStatus, "PUBLISHED")
                 .orderByDesc(Outfit::getCreateTime));
         resultPage.getRecords().forEach(this::refreshOutfitUrls);
         return resultPage;

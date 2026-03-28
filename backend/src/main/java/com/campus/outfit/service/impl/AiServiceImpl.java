@@ -264,17 +264,42 @@ public class AiServiceImpl implements AiService {
         log.info("[AI Try-On] 切入异步换装模型 DressingDiffusionV2. 人像: {}, 衣服: {}", personImageUrl, outfitImageUrl);
         try {
             // 第一步：提交任务
+            // 1. 下载图片并转换为 Base64
+            String personBase64;
+            String outfitBase64;
+            try {
+                log.info("[AI Try-On] 正在下载图片并转换为 Base64 格式...");
+                log.info("[AI Try-On] 请求下载人像图: {}", personImageUrl);
+                // 使用 URI 绕过 RestTemplate 的默认字符串二次编码（防止破坏 MinIO 的直链签名）
+                byte[] personBytes = restTemplate.getForObject(java.net.URI.create(personImageUrl), byte[].class);
+                log.info("[AI Try-On] 请求下载服装图: {}", outfitImageUrl);
+                byte[] outfitBytes = restTemplate.getForObject(java.net.URI.create(outfitImageUrl), byte[].class);
+                
+                if (personBytes == null || outfitBytes == null) {
+                    throw new RuntimeException("未能成功获取图片字节流");
+                }
+                
+                personBase64 = java.util.Base64.getEncoder().encodeToString(personBytes);
+                outfitBase64 = java.util.Base64.getEncoder().encodeToString(outfitBytes);
+                log.info("[AI Try-On] 图片 Base64 转换完成");
+            } catch (Exception e) {
+                log.error("[AI Try-On] 下载图片失败: {}", e.getMessage());
+                throw new RuntimeException("图片预处理失败: 无法访问图片地址", e);
+            }
+
+            // 2. 构建基于 Base64 的请求报文
             Map<String, Object> submitBody = new HashMap<>();
             submitBody.put("req_key", "dressing_diffusionV2");
+            submitBody.put("req_image_store_type", 0); // 0 表示使用 binary_data_base64 传输
+            submitBody.put("binary_data_base64", Arrays.asList(personBase64, outfitBase64));
             
-            Map<String, String> modelMap = new HashMap<>();
-            modelMap.put("url", personImageUrl);
-            submitBody.put("model", modelMap);
+            // model 节点目前不再需要传递 url
+            submitBody.put("model", new HashMap<String, String>());
             
             Map<String, Object> garment = new HashMap<>();
             Map<String, String> garmentItem = new HashMap<>();
             garmentItem.put("type", "full");
-            garmentItem.put("url", outfitImageUrl);
+            // 移除原有的 url 传递
             garment.put("data", Arrays.asList(garmentItem));
             submitBody.put("garment", garment);
 

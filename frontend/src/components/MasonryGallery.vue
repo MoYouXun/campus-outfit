@@ -10,7 +10,7 @@ const props = defineProps<{
 }>()
 
 const router = useRouter()
-const emit = defineEmits(['like', 'favorite', 'delete'])
+const emit = defineEmits(['like', 'favorite', 'delete', 'toggle-status'])
 
 // 获取当前登录用户信息
 const userStore = useUserStore()
@@ -132,6 +132,21 @@ const handleItemClick = (item: any) => {
                   <el-icon size="20"><Delete /></el-icon>
                 </div>
               </div>
+
+              <!-- 状态切换按钮（移入/移出私人衣橱） -->
+              <div 
+                v-if="isPostOwner(item)" 
+                class="absolute top-4 left-4 animate-fade-in" 
+                :title="item.status === 'PRIVATE' ? '发布到社区' : '移入私人衣橱'"
+                @click.stop="emit('toggle-status', item)"
+              >
+                <div class="w-10 h-10 rounded-full bg-primary/80 backdrop-blur-md flex-center text-white hover:bg-primary transition-all">
+                  <el-icon size="20">
+                    <component :is="item.status === 'PRIVATE' ? MagicStick : Lock" />
+                  </el-icon>
+                </div>
+              </div>
+
               <!-- 交互按钮组 -->
               <div class="absolute bottom-4 right-4 flex gap-2 animate-fade-in">
                 <!-- 点赞按钮 -->

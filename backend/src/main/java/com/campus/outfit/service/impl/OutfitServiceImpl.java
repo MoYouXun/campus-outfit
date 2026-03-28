@@ -6,6 +6,7 @@ import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.campus.outfit.dto.AiAnalysisResult;
+import com.campus.outfit.exception.BusinessException;
 import com.campus.outfit.entity.Outfit;
 import com.campus.outfit.entity.OutfitTopic;
 import com.campus.outfit.mapper.OutfitMapper;
@@ -341,7 +342,28 @@ public class OutfitServiceImpl extends ServiceImpl<OutfitMapper, Outfit> impleme
             refreshOutfitUrls(outfit);
             vos.add(com.campus.outfit.vo.OutfitVO.fromOutfit(outfit, null));
         }
-        
         return vos;
+    }
+    
+    @Override
+    @Transactional
+    public void updateOutfitStatus(Long outfitId, Long userId, String status) {
+        Outfit outfit = getById(outfitId);
+        if (outfit == null) {
+            throw new BusinessException("穿搭不存在");
+        }
+        if (!outfit.getUserId().equals(userId)) {
+            throw new BusinessException("无权操作该穿搭");
+        }
+        
+        outfit.setStatus(status);
+        // 同步更新公开状态：如果设为私密，则 isPublic 为 false
+        if ("PRIVATE".equalsIgnoreCase(status)) {
+            outfit.setIsPublic(false);
+        } else if ("PUBLISHED".equalsIgnoreCase(status)) {
+            outfit.setIsPublic(true);
+        }
+        
+        updateById(outfit);
     }
 }

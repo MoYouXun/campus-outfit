@@ -63,7 +63,7 @@ CREATE TABLE outfit (
     season          VARCHAR(20)   NULL COMMENT '季节：SPRING/SUMMER/AUTUMN/WINTER',
     occasion        VARCHAR(200)  NULL COMMENT '场合标签（JSON数组，如["上课","约会"]）',
     temperature_range VARCHAR(20) NULL COMMENT '适合温度范围（如：15-25°C）',
-    status          VARCHAR(20)   NOT NULL DEFAULT 'PUBLISHED' COMMENT '状态：DRAFT草稿/PUBLISHED发布',
+    status          VARCHAR(20)   NOT NULL DEFAULT 'PUBLISHED' COMMENT '状态：PUBLISHED-公开, PRIVATE-私密',
     is_public       TINYINT       NOT NULL DEFAULT 1 COMMENT '是否公开：0私密 1公开',
     like_count      INT           NOT NULL DEFAULT 0 COMMENT '点赞数快照',
     comment_count   INT           NOT NULL DEFAULT 0 COMMENT '评论数快照',

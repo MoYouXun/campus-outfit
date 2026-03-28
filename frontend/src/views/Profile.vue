@@ -2,10 +2,10 @@
 import { ref, onMounted, computed } from 'vue'
 import { useRoute } from 'vue-router'
 import { getUserInfo, followUser, unfollowUser } from '@/api/user'
-import { getMyOutfits, getUserOutfits, deleteOutfit, getMyPrivateOutfits } from '@/api/outfit'
+import { getMyOutfits, getUserOutfits, deleteOutfit, getMyPrivateOutfits, updateOutfitStatus } from '@/api/outfit'
 import MasonryGallery from '@/components/MasonryGallery.vue'
 import { useUserStore } from '@/stores/user'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { MagicStick, Refresh } from '@element-plus/icons-vue'
 import { aiTryOn } from '@/api/ai'
 import UploadImage from '@/components/UploadImage.vue'
@@ -57,6 +57,36 @@ const handleDelete = async (id: number | string) => {
     loadUser()
   } catch (e: any) {
     ElMessage.error(e.response?.data?.message || '帖子删除失败')
+  }
+}
+
+const handleToggleStatus = async (item: any, newStatus: string) => {
+  const actionText = newStatus === 'PRIVATE' ? '移入私人衣橱' : '发布到社区'
+  try {
+    await ElMessageBox.confirm(`确定要将该穿搭${actionText}吗？`, '状态控制', {
+      confirmButtonText: '确定',
+      cancelButtonText: '取消',
+      type: 'info',
+      customClass: 'glass-message-box'
+    })
+    
+    await updateOutfitStatus(item.id, newStatus as any)
+    ElMessage.success(`${actionText}成功`)
+    
+    // 无刷新同步逻辑
+    if (newStatus === 'PRIVATE') {
+      const idx = outfits.value.findIndex(o => o.id === item.id)
+      if (idx > -1) outfits.value.splice(idx, 1)
+      privateOutfits.value.unshift({ ...item, status: 'PRIVATE' })
+    } else {
+      const idx = privateOutfits.value.findIndex(o => o.id === item.id)
+      if (idx > -1) privateOutfits.value.splice(idx, 1)
+      outfits.value.unshift({ ...item, status: 'PUBLISHED' })
+    }
+  } catch (e: any) {
+    if (e !== 'cancel') {
+      ElMessage.error(e.response?.data?.message || '操作失败')
+    }
   }
 }
 
@@ -131,12 +161,12 @@ onMounted(loadUser)
       <div class="mt-8">
         <el-tabs v-model="activeTab" class="profile-tabs">
           <el-tab-pane label="公开穿搭" name="public">
-            <MasonryGallery :outfits="outfits" @delete="handleDelete" />
+            <MasonryGallery :outfits="outfits" @delete="handleDelete" @toggle-status="(item) => handleToggleStatus(item, 'PRIVATE')" />
           </el-tab-pane>
           <el-tab-pane v-if="isCurrentUser" label="私人衣橱" name="private">
             <div class="pt-2">
               <el-alert title="这是您的私密空间，此页签下所有内容仅您本人可见。" type="warning" show-icon class="mb-6" :closable="false" />
-              <MasonryGallery :outfits="privateOutfits" @delete="handleDelete" />
+              <MasonryGallery :outfits="privateOutfits" @delete="handleDelete" @toggle-status="(item) => handleToggleStatus(item, 'PUBLISHED')" />
             </div>
           </el-tab-pane>
         </el-tabs>

@@ -72,4 +72,13 @@ public class OutfitController {
     public Result<String> incrementViewCount(@PathVariable Long id) {
         return outfitService.incrementViewCount(id);
     }
+
+    @PutMapping("/{id}/status")
+    public Result<String> updateStatus(@PathVariable Long id, 
+                                      @RequestParam String status, 
+                                      @RequestHeader("Authorization") String token) {
+        Long userId = jwtUtils.getUserIdFromToken(token.replace("Bearer ", ""));
+        outfitService.updateOutfitStatus(id, userId, status);
+        return Result.success("状态更新成功");
+    }
 }

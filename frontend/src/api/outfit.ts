@@ -106,3 +106,16 @@ export function getMyPrivateOutfits() {
     method: 'get'
   })
 }
+
+/**
+ * 更新穿搭的状态（如：转为私密或转为公开）
+ * @param id 穿搭ID
+ * @param status 目标状态: PUBLISHED-公开, PRIVATE-私密
+ */
+export function updateOutfitStatus(id: number | string, status: 'PUBLISHED' | 'PRIVATE') {
+  return request({
+    url: `/outfit/${id}/status`,
+    method: 'put',
+    params: { status }
+  })
+}

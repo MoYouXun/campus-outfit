@@ -48,6 +48,7 @@ public class Outfit implements Serializable {
     private String occasion;
 
     private String temperatureRange;
+    @TableField("status")
     private String status;
     private Boolean isPublic;
 

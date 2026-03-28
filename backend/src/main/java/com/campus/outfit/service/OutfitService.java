@@ -20,4 +20,5 @@ public interface OutfitService extends IService<Outfit> {
     Result<String> incrementViewCount(Long id);
     void refreshOutfitUrls(Outfit outfit);
     List<com.campus.outfit.vo.OutfitVO> getMyPrivateOutfits(Long userId);
+    void updateOutfitStatus(Long outfitId, Long userId, String status);
 }

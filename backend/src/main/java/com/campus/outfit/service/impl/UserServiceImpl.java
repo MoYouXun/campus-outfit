@@ -74,7 +74,7 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
         map.put("token", token);
         map.put("userId", user.getId());
         map.put("username", user.getUsername());
-        map.put("role", user.getRole() != null ? user.getRole().name() : User.Role.NORMAL.name());
+        map.put("role", user.getRole().name());
         map.put("avatar", user.getAvatar());
 
         return Result.success(map);

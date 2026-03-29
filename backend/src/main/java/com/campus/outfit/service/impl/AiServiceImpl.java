@@ -1,6 +1,7 @@
 package com.campus.outfit.service.impl;
 
 import jakarta.annotation.PostConstruct;
+import com.campus.outfit.exception.BusinessException;
 
 import com.campus.outfit.dto.AiAnalysisResult;
 
@@ -247,11 +248,17 @@ public class AiServiceImpl implements AiService {
 
             log.info("[AI Try-On] 正在提交 V2 换装任务...");
             com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
-            Object submitRes = visualService.cvProcess(submitBody);
-            com.fasterxml.jackson.databind.JsonNode submitNode = mapper.readTree(mapper.writeValueAsString(submitRes));
+            com.fasterxml.jackson.databind.JsonNode submitNode;
+            try {
+                Object submitRes = visualService.cvProcess(submitBody);
+                submitNode = mapper.readTree(mapper.writeValueAsString(submitRes));
+            } catch (Exception e) {
+                log.error("火山引擎 AI 换装底层调用原始异常堆栈: ", e);
+                throw new BusinessException("AI 换装服务底层调用失败，请检查服务状态或配置: " + e.getMessage());
+            }
 
             if (submitNode.path("code").asInt() != 10000) {
-                throw new com.campus.outfit.exception.BusinessException("提交换装任务失败: " + submitNode.path("message").asText());
+                throw new BusinessException("提交换装任务失败: " + submitNode.path("message").asText());
             }
 
             String taskId = submitNode.path("data").path("task_id").asText();
@@ -662,4 +669,5 @@ public class AiServiceImpl implements AiService {
             throw new RuntimeException("AI 人像审计服务暂时不可用", e);
         }
     }
+
 }

@@ -49,6 +49,13 @@ api:
   volcengine:
     ak: AKLTZTc0NmY5NzA0Yjc0NGZlZDljOTNmMTg3ZWRjOTU0NzU
     sk: TURVNE5qSTVNbUZtWkdNM05EUTVNR0V4TmpZNE5UWmpOV1l5TWpFeE1UVQ==
+
+# AI 引擎配置 (Ark/Seedream)
+ai:
+  ark:
+    ak: AKLTZTc0NmY5NzA0Yjc0NGZlZDljOTNmMTg3ZWRjOTU0NzU
+    sk: TURVNE5qSTVNbUZtWkdNM05EUTVNR0V4TmpZNE5UWmpOV1l5TWpFeE1UVQ==
+    model-id: doubao-seedream-241028
     
 # 系统业务配置
 app:

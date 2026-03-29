@@ -3,6 +3,7 @@ import { ref, nextTick } from 'vue'
 import { MagicStick, Picture, Goods, Loading, Promotion } from '@element-plus/icons-vue'
 import { aiAnalyze, aiChat } from '@/api/recommend'
 import { getWardrobeList } from '@/api/wardrobe'
+import { useUserStore } from '@/stores/user'
 import { ElMessage } from 'element-plus'
 
 interface Message {
@@ -18,6 +19,7 @@ const messages = ref<Message[]>([])
 const loading = ref(false)
 const sessionId = ref('')
 const scrollContainer = ref<HTMLElement | null>(null)
+const userStore = useUserStore()
 
 // 衣柜选择弹窗相关
 const wardrobeVisible = ref(false)
@@ -69,13 +71,19 @@ const onFileChange = async (e: any) => {
 }
 
 const openWardrobe = async () => {
+  if (!userStore.token) {
+    ElMessage.warning('请先登录再查看衣柜')
+    return
+  }
+  
   wardrobeVisible.value = true
   wardrobeLoading.value = true
   try {
     const res: any = await getWardrobeList()
     wardrobeItems.value = res || []
-  } catch (e) {
-    ElMessage.error('获取衣柜失败')
+  } catch (e: any) {
+    console.error('[AiAssistant] 获取衣柜失败:', e)
+    ElMessage.error(`获取衣柜失败: ${e.message || '未知错误'}`)
   } finally {
     wardrobeLoading.value = false
   }
@@ -211,8 +219,11 @@ const sendMessage = async () => {
                 </div>
 
                 <div class="space-y-2">
-                  <div class="text-xs uppercase font-black text-muted-foreground tracking-tighter">分析总结 / Summary</div>
-                  <p class="text-xs leading-relaxed italic opacity-80">{{ msg.data.summary }}</p>
+                  <div class="text-xs uppercase font-black text-muted-foreground tracking-tighter">分析建议 / Suggestions</div>
+                  <div v-if="Array.isArray(msg.data.suggestions)" class="space-y-1">
+                    <p v-for="(sug, sIdx) in msg.data.suggestions" :key="sIdx" class="text-xs leading-relaxed opacity-80">• {{ sug }}</p>
+                  </div>
+                  <p v-else class="text-xs leading-relaxed italic opacity-80">{{ msg.data.suggestions }}</p>
                 </div>
 
                 <!-- 推荐效果图列表 -->
@@ -221,11 +232,11 @@ const sendMessage = async () => {
                   <div class="grid grid-cols-1 gap-4">
                     <div v-for="item in msg.data.recommendations" :key="item.id" class="bg-white/50 dark:bg-black/20 rounded-xl overflow-hidden border border-border/50 p-2 flex gap-3 group/item">
                       <div class="w-20 h-28 rounded-lg overflow-hidden bg-secondary/30 shrink-0 border border-white/20">
-                        <el-image :src="item.effectUrl" class="w-full h-full object-cover group-hover/item:scale-110 transition-transform duration-500" :preview-src-list="[item.effectUrl]" hide-on-click-modal />
+                        <el-image :src="item.image" class="w-full h-full object-cover group-hover/item:scale-110 transition-transform duration-500" :preview-src-list="[item.image]" hide-on-click-modal />
                       </div>
                       <div class="flex-1 flex flex-col justify-center gap-1">
-                        <div class="text-xs font-bold text-primary">{{ item.categoryMain }}</div>
-                        <p class="text-[10px] text-muted-foreground leading-tight">{{ item.reason }}</p>
+                        <div class="text-xs font-bold text-primary">{{ item.title }}</div>
+                        <p class="text-[10px] text-muted-foreground leading-tight">{{ item.desc }}</p>
                       </div>
                     </div>
                   </div>

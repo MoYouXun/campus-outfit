@@ -53,7 +53,7 @@ export function getRecommendByStyle(params: StyleParams) {
  */
 export function aiAnalyze(data: { base64Image: string, sessionId: string }) {
   return request({
-    url: '/recommend/ai-analyze',
+    url: '/ai/assistant/analyze',
     method: 'post',
     data
   })
@@ -65,7 +65,7 @@ export function aiAnalyze(data: { base64Image: string, sessionId: string }) {
  */
 export function aiChat(data: { message: string, sessionId: string }) {
   return request({
-    url: '/recommend/ai-chat',
+    url: '/ai/assistant/chat',
     method: 'post',
     data
   })

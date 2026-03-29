@@ -1,7 +1,8 @@
 package com.campus.outfit.service;
 
 import com.campus.outfit.dto.AiAnalysisResult;
-
+import com.campus.outfit.entity.WardrobeItem;
+import java.util.List;
 
 public interface AiService {
     /**
@@ -11,15 +12,14 @@ public interface AiService {
      */
     AiAnalysisResult analyzeOutfit(byte[] imageBytes);
 
-
-
     /**
      * 生成 AI 换装后的图片
-     * @param personImageUrl 人像图Url
-     * @param outfitImageUrl 衣服图Url
+     * @param humanImageUrl 人像图Url
+     * @param upperGarmentUrl 上衣图Url
+     * @param lowerGarmentUrl 裤子图Url
      * @return 生成的图片Base64或链接
      */
-    String generateTryOnImage(String personImageUrl, String outfitImageUrl);
+    String generateTryOnImage(String humanImageUrl, String upperGarmentUrl, String lowerGarmentUrl);
 
     /**
      * 使用衣柜上下文分析穿搭图片（支持多模态与多轮对话）
@@ -29,7 +29,7 @@ public interface AiService {
      * @param wardrobeItems 衣柜单品列表
      * @return AI 分析结果 JSON
      */
-    String analyzeOutfitWithWardrobe(String base64Image, Long userId, String sessionId, java.util.List<com.campus.outfit.entity.WardrobeItem> wardrobeItems);
+    String analyzeOutfitWithWardrobe(String base64Image, Long userId, String sessionId, List<WardrobeItem> wardrobeItems);
 
     /**
      * 在衣柜上下文环境下进行聊天（多轮对话）
@@ -38,7 +38,7 @@ public interface AiService {
      * @param wardrobeItems 衣柜单品列表（用于冷启动或增强参考）
      * @return AI 回复
      */
-    String chatWithWardrobeContext(String sessionId, String message, java.util.List<com.campus.outfit.entity.WardrobeItem> wardrobeItems);
+    String chatWithWardrobeContext(String sessionId, String message, List<WardrobeItem> wardrobeItems);
 
     /**
      * 生成 AI 图像（Seedream）

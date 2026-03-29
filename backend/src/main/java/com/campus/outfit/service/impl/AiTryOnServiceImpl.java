@@ -20,10 +20,15 @@ public class AiTryOnServiceImpl implements AiTryOnService {
 
     @Override
     public AiTryOnResponse generate(AiTryOnRequest request, Long userId) {
-        log.info("[AI Try-On] 用户发起换装请求，用户ID: {}, 类别: {}", userId, request.getCategory());
+        log.info("[AI Try-On] 用户发起换装请求，用户ID: {}, 上衣: {}, 裤子: {}", 
+                userId, request.getUpperGarmentUrl(), request.getLowerGarmentUrl());
         
-        // 调用统一的 AI 服务接口进行图像生成
-        String resultUrl = aiService.generateTryOnImage(request.getHumanImageUrl(), request.getGarmentImageUrl());
+        // 调用统一的 AI 服务接口进行图像生成，支持上下装同步处理
+        String resultUrl = aiService.generateTryOnImage(
+                request.getHumanImageUrl(), 
+                request.getUpperGarmentUrl(), 
+                request.getLowerGarmentUrl()
+        );
         
         AiTryOnResponse response = new AiTryOnResponse();
         response.setResultImageUrl(resultUrl);

@@ -1,17 +1,24 @@
 <script setup lang="ts">
-import { ref } from 'vue'
-import { Plus, MagicStick, Loading as IconLoading } from '@element-plus/icons-vue'
+import { ref, computed } from 'vue'
+import { Plus, MagicStick, Loading as IconLoading, Refresh, Close, Check } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
-import { uploadWardrobeItem } from '@/api/wardrobe'
+import { uploadWardrobeItem, getWardrobeList } from '@/api/wardrobe'
 import { aiTryOn } from '@/api/ai'
 
 // 响应式状态
 const humanImageUrl = ref('')
-const garmentImageUrl = ref('')
+const upperGarmentUrl = ref('')
+const lowerGarmentUrl = ref('')
 const resultImageUrl = ref('')
+
 const isGenerating = ref(false)
 const humanUploading = ref(false)
-const garmentUploading = ref(false)
+
+// 衣柜选择弹窗相关
+const isWardrobeDialogVisible = ref(false)
+const wardrobeLoading = ref(false)
+const wardrobeItems = ref<any[]>([])
+const selectionType = ref<'upper' | 'lower'>('upper')
 
 /**
  * 处理人像图片上传
@@ -30,18 +37,61 @@ const handleHumanUpload = async (options: any) => {
 }
 
 /**
- * 处理服装图片上传
+ * 打开衣柜选择弹窗
  */
-const handleGarmentUpload = async (options: any) => {
-  garmentUploading.value = true
+const openWardrobeDialog = async (type: 'upper' | 'lower') => {
+  selectionType.value = type
+  isWardrobeDialogVisible.value = true
+  
+  if (wardrobeItems.value.length === 0) {
+    fetchWardrobe()
+  }
+}
+
+/**
+ * 获取衣柜列表
+ */
+const fetchWardrobe = async () => {
+  wardrobeLoading.value = true
   try {
-    const res: any = await uploadWardrobeItem(options.file)
-    garmentImageUrl.value = res.originalImageUrl
-    ElMessage.success('服装图片上传成功')
+    const res: any = await getWardrobeList()
+    wardrobeItems.value = res
   } catch (e: any) {
-    ElMessage.error('服装上传失败：' + (e.message || '未知错误'))
+    ElMessage.error('获取衣柜列表失败')
   } finally {
-    garmentUploading.value = false
+    wardrobeLoading.value = false
+  }
+}
+
+/**
+ * 过滤后的衣柜列表
+ */
+const filteredWardrobeItems = computed(() => {
+  const targetCategory = selectionType.value === 'upper' ? '上装' : '下装'
+  return wardrobeItems.value.filter(item => item.categoryMain === targetCategory)
+})
+
+/**
+ * 选择单品
+ */
+const selectGarment = (item: any) => {
+  if (selectionType.value === 'upper') {
+    upperGarmentUrl.value = item.originalImageUrl
+  } else {
+    lowerGarmentUrl.value = item.originalImageUrl
+  }
+  isWardrobeDialogVisible.value = false
+  ElMessage.success(`已选中${selectionType.value === 'upper' ? '上装' : '下装'}`)
+}
+
+/**
+ * 移除已选单品
+ */
+const removeGarment = (type: 'upper' | 'lower') => {
+  if (type === 'upper') {
+    upperGarmentUrl.value = ''
+  } else {
+    lowerGarmentUrl.value = ''
   }
 }
 
@@ -49,19 +99,24 @@ const handleGarmentUpload = async (options: any) => {
  * 执行 AI 试衣
  */
 const handleTryOn = async () => {
-  if (!humanImageUrl.value || !garmentImageUrl.value) {
-    ElMessage.warning('请先上传人像照和服装照后再尝试一键试穿')
+  if (!humanImageUrl.value) {
+    ElMessage.warning('请先上传人像照')
+    return
+  }
+  
+  if (!upperGarmentUrl.value && !lowerGarmentUrl.value) {
+    ElMessage.warning('请至少选择一件上装或下装进行试穿')
     return
   }
 
   isGenerating.value = true
-  resultImageUrl.value = '' // 清除旧结果
+  resultImageUrl.value = ''
 
   try {
     const res: any = await aiTryOn({
       humanImageUrl: humanImageUrl.value,
-      garmentImageUrl: garmentImageUrl.value,
-      category: 'upper_body' // 默认上装，可扩展
+      upperGarmentUrl: upperGarmentUrl.value || undefined,
+      lowerGarmentUrl: lowerGarmentUrl.value || undefined
     })
     resultImageUrl.value = res.resultImageUrl
     ElMessage.success('AI 魔法试穿成功！')
@@ -80,13 +135,14 @@ const handleTryOn = async () => {
       <h1 class="text-4xl font-black mb-4 flex items-center justify-center gap-3">
         <span class="text-primary italic">AI</span> 魔法试衣间 ✨
       </h1>
-      <p class="text-muted-foreground text-lg">上传您的人像与心仪服装，让 AI 为您呈现最真实的试穿效果</p>
+      <p class="text-muted-foreground text-lg">组合您的心仪上装与下装，让 AI 为您呈现全身试穿效果</p>
     </div>
 
     <el-row :gutter="40">
       <!-- 左侧：输入控制区 -->
-      <el-col :xs="24" :sm="24" :md="8" :lg="8">
+      <el-col :xs="24" :sm="24" :md="10" :lg="9">
         <div class="glass-card p-6 space-y-8 animate-slide-up">
+          <!-- 步骤1：人像 -->
           <div class="upload-group">
             <h3 class="text-sm font-black uppercase text-primary mb-4 flex items-center gap-2">
               <div class="w-1.5 h-4 bg-primary rounded-full"></div>
@@ -103,37 +159,58 @@ const handleTryOn = async () => {
               <img v-if="humanImageUrl" :src="humanImageUrl" class="preview-img" />
               <div v-else class="flex flex-col items-center">
                 <el-icon class="uploader-icon"><Plus /></el-icon>
-                <span class="text-xs text-muted-foreground mt-2">点击选择人像</span>
+                <span class="text-xs text-muted-foreground mt-2">点击上传人像底图</span>
               </div>
             </el-upload>
           </div>
 
+          <!-- 步骤2：服装选择 -->
           <div class="upload-group">
             <h3 class="text-sm font-black uppercase text-primary mb-4 flex items-center gap-2">
               <div class="w-1.5 h-4 bg-primary rounded-full"></div>
-              第 2 步：上传衣服照
+              第 2 步：选择试穿服装
             </h3>
-            <el-upload
-              class="tryon-uploader"
-              action="#"
-              :show-file-list="false"
-              :auto-upload="true"
-              :http-request="handleGarmentUpload"
-              v-loading="garmentUploading"
-            >
-              <img v-if="garmentImageUrl" :src="garmentImageUrl" class="preview-img" />
-              <div v-else class="flex flex-col items-center">
-                <el-icon class="uploader-icon"><Plus /></el-icon>
-                <span class="text-xs text-muted-foreground mt-2">点击选择服装</span>
+            
+            <div class="grid grid-cols-2 gap-4">
+              <!-- 上装位 -->
+              <div class="garment-slot-container">
+                <div v-if="upperGarmentUrl" class="selected-garment relative group">
+                  <el-image :src="upperGarmentUrl" class="w-full aspect-[3/4] rounded-xl object-cover border-2 border-primary" />
+                  <div class="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center gap-2 rounded-xl">
+                    <el-button type="primary" size="small" :icon="Refresh" circle @click="openWardrobeDialog('upper')" />
+                    <el-button type="danger" size="small" :icon="Close" circle @click="removeGarment('upper')" />
+                  </div>
+                  <div class="absolute bottom-2 left-2 bg-primary text-white text-[10px] px-2 py-0.5 rounded-md">已选上装</div>
+                </div>
+                <div v-else class="garment-empty-slot" @click="openWardrobeDialog('upper')">
+                  <el-icon size="24"><Plus /></el-icon>
+                  <span class="text-[10px] mt-1 font-bold">选择上装</span>
+                </div>
               </div>
-            </el-upload>
+
+              <!-- 下装位 -->
+              <div class="garment-slot-container">
+                <div v-if="lowerGarmentUrl" class="selected-garment relative group">
+                  <el-image :src="lowerGarmentUrl" class="w-full aspect-[3/4] rounded-xl object-cover border-2 border-primary" />
+                  <div class="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center gap-2 rounded-xl">
+                    <el-button type="primary" size="small" :icon="Refresh" circle @click="openWardrobeDialog('lower')" />
+                    <el-button type="danger" size="small" :icon="Close" circle @click="removeGarment('lower')" />
+                  </div>
+                  <div class="absolute bottom-2 left-2 bg-primary text-white text-[10px] px-2 py-0.5 rounded-md">已选下装</div>
+                </div>
+                <div v-else class="garment-empty-slot" @click="openWardrobeDialog('lower')">
+                  <el-icon size="24"><Plus /></el-icon>
+                  <span class="text-[10px] mt-1 font-bold">选择下装</span>
+                </div>
+              </div>
+            </div>
           </div>
 
           <el-button
             type="primary"
             class="tryon-btn w-full h-14 text-lg font-bold rounded-2xl shadow-lg shadow-primary/30"
             :loading="isGenerating"
-            :disabled="!humanImageUrl || !garmentImageUrl"
+            :disabled="!humanImageUrl || (!upperGarmentUrl && !lowerGarmentUrl)"
             @click="handleTryOn"
           >
             一键魔法试穿 ✨
@@ -142,36 +219,67 @@ const handleTryOn = async () => {
       </el-col>
 
       <!-- 右侧：生成结果区 -->
-      <el-col :xs="24" :sm="24" :md="16" :lg="16">
+      <el-col :xs="24" :sm="24" :md="14" :lg="15">
         <el-card class="result-card glass-card relative overflow-hidden animate-slide-up-slow" shadow="hover">
           <div v-if="isGenerating" class="loading-overlay flex flex-col items-center justify-center p-20">
             <div class="pulse-animation mb-6">
               <el-icon size="64" class="text-primary animate-spin"><IconLoading /></el-icon>
             </div>
-            <h3 class="text-2xl font-bold mb-2">AI 魔法合成中...</h3>
-            <p class="text-muted-foreground animate-pulse text-center">正在处理面料纹理与光影融合，预计需要 10-20 秒，请稍候</p>
+            <h3 class="text-2xl font-bold mb-2">AI 正在编织时尚...</h3>
+            <p class="text-muted-foreground animate-pulse text-center max-w-sm">正在深度融合面料褶皱、人体轮廓与环境光影，预计需要 15-20 秒，请耐心等待这份惊艳</p>
           </div>
 
-          <div v-else-if="resultImageUrl" class="result-display h-full min-h-[600px] flex items-center justify-center">
+          <div v-else-if="resultImageUrl" class="result-display h-full min-h-[600px] flex items-center justify-center relative">
             <el-image
               :src="resultImageUrl"
               class="w-full h-full object-contain rounded-xl"
               :preview-src-list="[resultImageUrl]"
               fit="contain"
             />
-            <div class="absolute bottom-6 right-6">
-              <el-button type="success" round size="large" class="shadow-xl" icon="Download">保存穿衣效果</el-button>
+            <div class="absolute bottom-6 left-1/2 -translate-x-1/2 flex gap-4">
+              <el-button type="success" round size="large" class="shadow-xl px-8" icon="Download">保存试穿效果</el-button>
+              <el-button type="info" round size="large" class="shadow-xl px-8 bg-white/20 backdrop-blur-md border-white/30" @click="resultImageUrl = ''">重新配置</el-button>
             </div>
           </div>
 
           <div v-else class="empty-placeholder h-full min-h-[600px] flex-center flex-col text-muted-foreground p-12 select-none border-2 border-dashed border-border/40 rounded-[2rem]">
             <el-icon size="80" class="mb-6 opacity-20"><MagicStick /></el-icon>
-            <p class="text-xl font-bold italic opacity-30 tracking-widest uppercase">Select images to start magic</p>
-            <p class="mt-4 text-sm opacity-50">您的试穿结果将在此处展示</p>
+            <p class="text-xl font-bold italic opacity-30 tracking-widest uppercase">Select garments for full body try-on</p>
+            <p class="mt-4 text-sm opacity-50">配置完成后，您的 AI 生成效果将在此展示</p>
           </div>
         </el-card>
       </el-col>
     </el-row>
+
+    <!-- 衣柜选择弹窗 -->
+    <el-dialog
+      v-model="isWardrobeDialogVisible"
+      :title="`从衣柜选择${selectionType === 'upper' ? '上装' : '下装'}`"
+      width="800px"
+      class="wardrobe-select-dialog"
+      append-to-body
+      destroy-on-close
+    >
+      <div v-loading="wardrobeLoading" class="min-h-[400px]">
+        <div v-if="filteredWardrobeItems.length === 0" class="flex flex-col items-center justify-center py-20">
+          <el-empty :description="`您的衣柜里还没有${selectionType === 'upper' ? '上装' : '下装'}哦，去个人中心上传吧！`" />
+        </div>
+        <div v-else class="grid grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4 max-h-[60vh] overflow-y-auto pr-2">
+          <div 
+            v-for="item in filteredWardrobeItems" 
+            :key="item.id" 
+            class="wardrobe-pick-item group cursor-pointer relative"
+            @click="selectGarment(item)"
+          >
+            <el-image :src="item.originalImageUrl" class="w-full aspect-[3/4] rounded-xl object-cover border-2 border-transparent group-hover:border-primary transition-all" />
+            <div class="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity">
+              <el-icon class="bg-primary text-white p-1 rounded-full"><Check /></el-icon>
+            </div>
+            <div class="mt-1 text-[10px] text-center text-muted-foreground truncate">{{ item.categorySub }}</div>
+          </div>
+        </div>
+      </div>
+    </el-dialog>
   </div>
 </template>
 
@@ -190,6 +298,10 @@ const handleTryOn = async () => {
 
 .uploader-icon {
   @apply text-3xl text-muted-foreground;
+}
+
+.garment-empty-slot {
+  @apply border-2 border-dashed border-border rounded-xl aspect-[3/4] flex flex-col items-center justify-center cursor-pointer transition-all hover:border-primary/50 hover:bg-primary/5 bg-secondary/5 text-muted-foreground;
 }
 
 .result-card {
@@ -218,5 +330,9 @@ const handleTryOn = async () => {
 
 .flex-center {
   @apply flex items-center justify-center;
+}
+
+.wardrobe-select-dialog :deep(.el-dialog__body) {
+  @apply pt-2 pb-6 px-6;
 }
 </style>

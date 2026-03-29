@@ -1,21 +1,105 @@
 <script setup lang="ts">
-import { ref, nextTick } from 'vue'
+import { ref, nextTick, watch, computed } from 'vue'
 import * as echarts from 'echarts'
 import { pkOutfits } from '@/api/ai'
-import { uploadWardrobeItem } from '@/api/wardrobe'
+import { getWardrobeList } from '@/api/wardrobe'
+import { getMyOutfits, getFavoriteOutfits } from '@/api/outfit'
 import { ElMessage } from 'element-plus'
-import { MagicStick, ChatDotRound, Trophy, Plus, Loading } from '@element-plus/icons-vue'
+import { MagicStick, ChatDotRound, Trophy, Plus, Check, Collection, Postcard, ShoppingBag } from '@element-plus/icons-vue'
 
 // 响应式变量
 const imageAUrl = ref('')
 const imageBUrl = ref('')
 const scene = ref('校园路演/学术演讲')
 const loading = ref(false)
-const uploadingA = ref(false)
-const uploadingB = ref(false)
 const pkResult = ref<any>(null)
 const radarChartRef = ref<HTMLElement | null>(null)
 let myChart: echarts.ECharts | null = null
+
+// 资源选择弹窗相关
+const isSelectionDialogVisible = ref(false)
+const selectionLoading = ref(false)
+const activeTab = ref<'posts' | 'favorites' | 'wardrobe'>('posts')
+const targetSlot = ref<'A' | 'B'>('A')
+
+const posts = ref<any[]>([])
+const favorites = ref<any[]>([])
+const wardrobeItems = ref<any[]>([])
+
+/**
+ * 监听 Tab 切换并获取数据
+ */
+watch(activeTab, () => {
+  fetchSelectionData()
+})
+
+/**
+ * 打开选择弹窗
+ */
+const openSelectionDialog = (target: 'A' | 'B') => {
+  targetSlot.value = target
+  isSelectionDialogVisible.value = true
+  fetchSelectionData()
+}
+
+/**
+ * 获取素材数据
+ */
+const fetchSelectionData = async () => {
+  // 仅在列表为空时才请求
+  if (activeTab.value === 'posts' && posts.value.length > 0) return
+  if (activeTab.value === 'favorites' && favorites.value.length > 0) return
+  if (activeTab.value === 'wardrobe' && wardrobeItems.value.length > 0) return
+
+  selectionLoading.value = true
+  try {
+    if (activeTab.value === 'posts') {
+      const res: any = await getMyOutfits({ page: 1, size: 50 })
+      posts.value = res.records || []
+    } else if (activeTab.value === 'favorites') {
+      const res: any = await getFavoriteOutfits()
+      favorites.value = res || []
+    } else if (activeTab.value === 'wardrobe') {
+      const res: any = await getWardrobeList()
+      wardrobeItems.value = res || []
+    }
+  } catch (e: any) {
+    ElMessage.error('获取资源列表失败')
+  } finally {
+    selectionLoading.value = false
+  }
+}
+
+/**
+ * 获取当前选项卡对应的列表数据
+ */
+const getCurrentList = computed(() => {
+  if (activeTab.value === 'posts') return posts.value
+  if (activeTab.value === 'favorites') return favorites.value
+  return wardrobeItems.value
+})
+
+/**
+ * 获取具体某一项的图片 URL
+ */
+const getItemUrl = (item: any) => {
+  if (activeTab.value === 'wardrobe') return item.originalImageUrl
+  return item.imageUrls && item.imageUrls.length > 0 ? item.imageUrls[0] : item.thumbnailUrl
+}
+
+/**
+ * 选中素材
+ */
+const handleSelectItem = (item: any) => {
+  const url = getItemUrl(item)
+  if (targetSlot.value === 'A') {
+    imageAUrl.value = url
+  } else {
+    imageBUrl.value = url
+  }
+  isSelectionDialogVisible.value = false
+  ElMessage.success(`已设置搭配 ${targetSlot.value}`)
+}
 
 /**
  * 渲染雷达图
@@ -47,43 +131,11 @@ const renderRadarChart = (radarData: any) => {
 }
 
 /**
- * 处理图片 A 上传
- */
-const handleUploadA = async (options: any) => {
-  uploadingA.value = true
-  try {
-    const res: any = await uploadWardrobeItem(options.file)
-    imageAUrl.value = res.originalImageUrl
-    ElMessage.success('搭配 A 图片上传成功')
-  } catch (e: any) {
-    ElMessage.error('上传失败：' + (e.message || '未知错误'))
-  } finally {
-    uploadingA.value = false
-  }
-}
-
-/**
- * 处理图片 B 上传
- */
-const handleUploadB = async (options: any) => {
-  uploadingB.value = true
-  try {
-    const res: any = await uploadWardrobeItem(options.file)
-    imageBUrl.value = res.originalImageUrl
-    ElMessage.success('搭配 B 图片上传成功')
-  } catch (e: any) {
-    ElMessage.error('上传失败：' + (e.message || '未知错误'))
-  } finally {
-    uploadingB.value = false
-  }
-}
-
-/**
  * 开始 PK 逻辑
  */
 const startPK = async () => {
   if (!imageAUrl.value || !imageBUrl.value || !scene.value) {
-    ElMessage.warning('请确保图片已上传并填写场景')
+    ElMessage.warning('请确保图片已选择并填写场景')
     return
   }
   loading.value = true
@@ -112,44 +164,36 @@ const startPK = async () => {
         <el-icon class="text-primary"><MagicStick /></el-icon>
         AI <span class="text-primary italic">Outfit</span> PK 对决
       </h1>
-      <p class="text-muted-foreground text-lg">上传两套搭配图片，让 AI 专家为您在特定场景下进行深度对决分析</p>
+      <p class="text-muted-foreground text-lg">从您的发布、收藏或衣柜中选取搭配，让 AI 专家在特定场景下深度对决</p>
     </div>
 
     <div class="grid grid-cols-1 lg:grid-cols-2 gap-10">
-      <!-- 左侧：上传与操作区 -->
+      <!-- 左侧：输入控制区 -->
       <div class="glass-card p-8 space-y-8 animate-slide-up">
-        <!-- 图片上传槽 -->
+        <!-- 图片选择槽 -->
         <div class="flex items-center justify-between gap-6">
           <div class="flex-1 text-center">
             <div class="text-sm font-black mb-4 uppercase text-muted-foreground">搭配 A</div>
-            <el-upload
-              class="pk-uploader"
-              action="#"
-              :auto-upload="true"
-              :http-request="handleUploadA"
-              :show-file-list="false"
-              v-loading="uploadingA"
-            >
-              <img v-if="imageAUrl" :src="imageAUrl" class="preview-img" />
-              <el-icon v-else class="uploader-icon"><Plus /></el-icon>
-            </el-upload>
+            <div class="pk-slot-container" @click="openSelectionDialog('A')">
+              <img v-if="imageAUrl" :src="imageAUrl" class="preview-img rounded-2xl shadow-md border-2 border-primary/20" />
+              <div v-else class="pk-empty-slot">
+                <el-icon size="30"><Plus /></el-icon>
+                <div class="text-xs mt-2 font-bold">选择搭配 A</div>
+              </div>
+            </div>
           </div>
 
           <div class="text-3xl font-black italic text-muted-foreground/30 pt-8">VS</div>
 
           <div class="flex-1 text-center">
             <div class="text-sm font-black mb-4 uppercase text-muted-foreground">搭配 B</div>
-            <el-upload
-              class="pk-uploader"
-              action="#"
-              :auto-upload="true"
-              :http-request="handleUploadB"
-              :show-file-list="false"
-              v-loading="uploadingB"
-            >
-              <img v-if="imageBUrl" :src="imageBUrl" class="preview-img" />
-              <el-icon v-else class="uploader-icon"><Plus /></el-icon>
-            </el-upload>
+            <div class="pk-slot-container" @click="openSelectionDialog('B')">
+              <img v-if="imageBUrl" :src="imageBUrl" class="preview-img rounded-2xl shadow-md border-2 border-primary/20" />
+              <div v-else class="pk-empty-slot">
+                <el-icon size="30"><Plus /></el-icon>
+                <div class="text-xs mt-2 font-bold">选择搭配 B</div>
+              </div>
+            </div>
           </div>
         </div>
 
@@ -163,7 +207,7 @@ const startPK = async () => {
           <el-button 
             type="primary" 
             size="large" 
-            class="w-full h-14 text-lg font-bold rounded-2xl"
+            class="w-full h-14 text-lg font-bold rounded-2xl shadow-lg shadow-primary/20"
             :loading="loading"
             :disabled="!imageAUrl || !imageBUrl"
             @click="startPK"
@@ -179,7 +223,7 @@ const startPK = async () => {
           <div class="glass-card p-8 border-2 border-primary/20 bg-primary/5 animate-fade-in">
             <div class="flex items-center gap-4 mb-6">
               <el-icon size="32" class="text-primary"><Trophy /></el-icon>
-              <h3 class="text-2xl font-black">AI 认定结果：方案 {{ pkResult.winner }} 胜出</h3>
+              <h3 class="text-2xl font-black">AI 认定结论：搭配 {{ pkResult.winner }} 胜出</h3>
             </div>
             <p class="text-lg leading-relaxed text-foreground italic font-medium">“{{ pkResult.reason }}”</p>
           </div>
@@ -190,10 +234,65 @@ const startPK = async () => {
         </template>
         <div v-else class="glass-card h-full min-h-[500px] flex-center flex-col text-muted-foreground opacity-30 select-none border-dashed border-2">
           <el-icon size="64" class="mb-4"><MagicStick /></el-icon>
-          <p class="text-xl font-bold italic">WITING FOR THE DUEL</p>
+          <p class="text-xl font-bold italic uppercase tracking-tighter">Waiting for the Duel Analysis</p>
         </div>
       </div>
     </div>
+
+    <!-- 资源选择弹窗 -->
+    <el-dialog
+      v-model="isSelectionDialogVisible"
+      :title="`为搭配 ${targetSlot} 选择素材`"
+      width="850px"
+      append-to-body
+      destroy-on-close
+      class="selection-dialog"
+    >
+      <div class="dialog-body pt-2">
+        <el-tabs v-model="activeTab" class="custom-tabs">
+          <el-tab-pane label="我的发布" name="posts">
+            <template #label>
+              <span class="flex items-center gap-2"><el-icon><Postcard /></el-icon>我的发布</span>
+            </template>
+          </el-tab-pane>
+          <el-tab-pane label="我的收藏" name="favorites">
+            <template #label>
+              <span class="flex items-center gap-2"><el-icon><Collection /></el-icon>我的收藏</span>
+            </template>
+          </el-tab-pane>
+          <el-tab-pane label="私人衣橱" name="wardrobe">
+            <template #label>
+              <span class="flex items-center gap-2"><el-icon><ShoppingBag /></el-icon>私人衣橱</span>
+            </template>
+          </el-tab-pane>
+        </el-tabs>
+
+        <div v-loading="selectionLoading" class="resource-grid-container mt-4 min-h-[400px]">
+          <div v-if="getCurrentList.length === 0" class="flex flex-col items-center justify-center pt-20">
+            <el-empty description="该分类下暂无可用素材" />
+          </div>
+          <div v-else class="grid grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4 h-[60vh] overflow-y-auto pr-2">
+            <div 
+              v-for="(item, idx) in getCurrentList" 
+              :key="idx" 
+              class="resource-item group relative cursor-pointer"
+              @click="handleSelectItem(item)"
+            >
+              <el-image 
+                :src="getItemUrl(item)" 
+                class="w-full aspect-[3/4] rounded-xl object-cover border-2 border-transparent group-hover:border-primary transition-all" 
+              />
+              <div class="absolute inset-0 bg-black/20 opacity-0 group-hover:opacity-100 transition-opacity rounded-xl flex items-center justify-center">
+                <el-icon size="24" class="text-white"><Check /></el-icon>
+              </div>
+              <div class="mt-1 text-[10px] text-muted-foreground truncate px-1 text-center">
+                {{ item.title || item.categorySub || '未命名项目' }}
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </el-dialog>
   </div>
 </template>
 
@@ -202,16 +301,16 @@ const startPK = async () => {
   @apply bg-background/60 backdrop-blur-xl border border-white/40 dark:border-white/10 rounded-[2rem] shadow-[0_8px_32px_rgba(0,0,0,0.05)];
 }
 
-.pk-uploader :deep(.el-upload) {
-  @apply border-2 border-dashed border-border rounded-2xl cursor-pointer relative overflow-hidden transition-all hover:border-primary/50 bg-secondary/20 flex items-center justify-center w-full aspect-[3/4];
+.pk-slot-container {
+  @apply w-full aspect-[3/4] cursor-pointer transition-all hover:scale-[1.02];
+}
+
+.pk-empty-slot {
+  @apply border-2 border-dashed border-border rounded-2xl flex flex-col items-center justify-center h-full bg-secondary/10 text-muted-foreground hover:border-primary/50 transition-colors;
 }
 
 .preview-img {
   @apply w-full h-full object-cover;
-}
-
-.uploader-icon {
-  @apply text-3xl text-muted-foreground;
 }
 
 .animate-fade-in { animation: fadeIn 0.6s ease-out; }
@@ -221,4 +320,16 @@ const startPK = async () => {
 @keyframes slideUp { from { opacity: 0; transform: translateY(30px); } to { opacity: 1; transform: translateY(0); } }
 
 :deep(.el-input__wrapper) { @apply rounded-xl border-none shadow-none bg-secondary/30 h-12 transition-all; }
+
+.custom-tabs :deep(.el-tabs__header) {
+  @apply mb-0;
+}
+
+.selection-dialog :deep(.el-dialog__body) {
+  @apply p-6;
+}
+
+.flex-center {
+  @apply flex items-center justify-center;
+}
 </style>

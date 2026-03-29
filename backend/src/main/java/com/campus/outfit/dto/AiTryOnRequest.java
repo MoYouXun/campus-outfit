@@ -8,6 +8,6 @@ import lombok.Data;
 @Data
 public class AiTryOnRequest {
     private String humanImageUrl;
-    private String garmentImageUrl;
-    private String category = "upper_body";
+    private String upperGarmentUrl;
+    private String lowerGarmentUrl;
 }

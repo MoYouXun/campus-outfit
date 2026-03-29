@@ -10,6 +10,11 @@ export async function pkOutfits(data: { imageAUrl: string; imageBUrl: string; sc
 /**
  * 发起 AI 试衣生成请求
  */
-export async function aiTryOn(data: { humanImageUrl: string; garmentImageUrl: string; category?: string }) {
+export async function aiTryOn(data: { 
+  humanImageUrl: string; 
+  upperGarmentUrl?: string; 
+  lowerGarmentUrl?: string;
+  category?: string 
+}) {
   return request.post('/ai/try-on/generate', data)
 }

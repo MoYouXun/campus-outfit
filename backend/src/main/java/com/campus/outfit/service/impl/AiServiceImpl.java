@@ -186,74 +186,69 @@ public class AiServiceImpl implements AiService {
 
 
     @Override
-    public String generateTryOnImage(String personImageUrl, String outfitImageUrl) {
-        log.info("[AI Try-On] 切入异步换装模型 DressingDiffusionV2. 人像: {}, 衣服: {}", personImageUrl, outfitImageUrl);
+    public String generateTryOnImage(String personImageUrl, String upperGarmentUrl, String lowerGarmentUrl) {
+        log.info("[AI Try-On] 切入异步换装模型 DressingDiffusionV2. 人像: {}, 上装: {}, 下装: {}", 
+                personImageUrl, upperGarmentUrl, lowerGarmentUrl);
         try {
-            // 第一步：提交任务
-            // 1. 下载图片并转换为 Base64
-            String personBase64;
-            String outfitBase64;
-            try {
-                log.info("[AI Try-On] 正在下载图片并转换为 Base64 格式...");
-                log.info("[AI Try-On] 请求下载人像图: {}", personImageUrl);
-                byte[] personBytes = downloadImageBytes(personImageUrl);
-                
-                log.info("[AI Try-On] 请求下载服装图: {}", outfitImageUrl);
-                byte[] outfitBytes = downloadImageBytes(outfitImageUrl);
-                
-                personBase64 = java.util.Base64.getEncoder().encodeToString(personBytes);
-                outfitBase64 = java.util.Base64.getEncoder().encodeToString(outfitBytes);
-                log.info("[AI Try-On] 图片 Base64 转换完成");
-            } catch (Exception e) {
-                log.error("[AI Try-On] 图片预处理阶段触发异常: {}", e.getMessage());
-                // 如果已经是我们的业务包装异常，直接透传；否则重新包装
-                throw (e instanceof RuntimeException) ? (RuntimeException) e : new RuntimeException("图片预处理失败: 无法访问图片地址", e);
+            // 第一步：准备图片 Base64
+            List<String> base64List = new ArrayList<>();
+            List<Map<String, String>> garmentConfigs = new ArrayList<>();
+
+            // 1. 人像基础底图
+            byte[] personBytes = downloadImageBytes(personImageUrl);
+            base64List.add(Base64.getEncoder().encodeToString(personBytes));
+
+            // 2. 上装处理
+            if (upperGarmentUrl != null && !upperGarmentUrl.trim().isEmpty()) {
+                byte[] upperBytes = downloadImageBytes(upperGarmentUrl);
+                base64List.add(Base64.getEncoder().encodeToString(upperBytes));
+                Map<String, String> upperCfg = new HashMap<>();
+                upperCfg.put("type", "upper_body");
+                garmentConfigs.add(upperCfg);
             }
 
-            // 2. 构建基于 Base64 的请求报文
+            // 3. 下装处理
+            if (lowerGarmentUrl != null && !lowerGarmentUrl.trim().isEmpty()) {
+                byte[] lowerBytes = downloadImageBytes(lowerGarmentUrl);
+                base64List.add(Base64.getEncoder().encodeToString(lowerBytes));
+                Map<String, String> lowerCfg = new HashMap<>();
+                lowerCfg.put("type", "lower_body");
+                garmentConfigs.add(lowerCfg);
+            }
+
+            if (garmentConfigs.isEmpty()) {
+                throw new RuntimeException("图片预处理异常：未检测到任何有效的待换装服饰 URL");
+            }
+
+            // 第二步：构建提交报文
             Map<String, Object> submitBody = new HashMap<>();
             submitBody.put("req_key", "dressing_diffusionV2");
-            submitBody.put("req_image_store_type", 0); // 0 表示使用 binary_data_base64 传输
-            submitBody.put("binary_data_base64", Arrays.asList(personBase64, outfitBase64));
-            
-            // model 节点目前不再需要传递 url
+            submitBody.put("req_image_store_type", 0); 
+            submitBody.put("binary_data_base64", base64List);
             submitBody.put("model", new HashMap<String, String>());
             
             Map<String, Object> garment = new HashMap<>();
-            Map<String, String> garmentItem = new HashMap<>();
-            garmentItem.put("type", "full");
-            // 移除原有的 url 传递
-            garment.put("data", Arrays.asList(garmentItem));
+            garment.put("data", garmentConfigs);
             submitBody.put("garment", garment);
 
-            log.info("[AI Try-On] 正在通过通用 JSON 模式提交异常任务...");
-            // 采用通用基于 Map 序列化方式，规避具体的 Request 类引用
+            log.info("[AI Try-On] 正在提交复合换装任务... 服装件数: {}", garmentConfigs.size());
             String taskId = "";
             try {
-                // 注意：由于 visualService 实例是 SDK 生成的 IVisualService，
-                // 其具体方法可能对参数类型有要求，若无法直接使用 Map，则采用通用反射调用或退化至底层方法。
-                // 暂时按照“基于 JSON 序列化的通用调用方式”的思路：
-                // 如果 SDK 支持直接传 Map 或通过 objectMapper 转换
                 Object submitResp = visualService.cvSubmitTask(submitBody);
                 JsonNode submitData = objectMapper.valueToTree(submitResp);
                 
                 int code = submitData.path("code").asInt();
                 if (code != 10000 && !submitData.has("task_id")) {
                      String msg = submitData.path("message").asText("Unknown Error");
-                     log.error("提交任务失败响应: code={}, msg={}", code, msg);
-                     if (msg.toLowerCase().contains("risk") || code == 50218 || code == 50411 || code == 50511) {
-                         throw new RuntimeException("图片触发安全风控，请检查是否包含违规或敏感内容，更换后重试");
+                     if (msg.toLowerCase().contains("risk")) {
+                         throw new RuntimeException("图片触发安全风控，请检查内容合法性");
                      }
-                     throw new RuntimeException("AI换装提交服务异常：" + msg);
+                     throw new RuntimeException("AI换装提交服务失败：" + msg);
                 }
                 taskId = submitData.path("data").path("task_id").asText();
             } catch (Exception e) {
-                String errMsg = e.getMessage();
-                log.error("提交阶段 SDK 异常: {}", errMsg);
-                if (errMsg != null && (errMsg.contains("50218") || errMsg.contains("50411") || errMsg.contains("50511") || errMsg.toLowerCase().contains("risk"))) {
-                    throw new RuntimeException("图片触发安全风控，请检查是否包含违规或敏感内容，更换后重试");
-                }
-                throw new RuntimeException("AI换装提交服务失败: " + errMsg, e);
+                log.error("提交任务失败: {}", e.getMessage());
+                throw (e instanceof RuntimeException) ? (RuntimeException) e : new RuntimeException("提交换装任务异常", e);
             }
 
             log.info("[AI Try-On] 任务提交成功, task_id: {}", taskId);

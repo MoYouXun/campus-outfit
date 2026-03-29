@@ -493,6 +493,36 @@ public class AiServiceImpl implements AiService {
     @Override
     public String analyzeWardrobeItem(String base64Image) {
         log.info("[AI Service] 开始分析单品图片并鉴定合法性...");
+
+        // 1. 提取并校验 Base64 图片魔数（拦截非 JPG/PNG，特别是伪装的 WebP）
+        try {
+            String pureBase64 = base64Image;
+            // 切除可能存在的 data:image/xxx;base64, 前缀
+            if (base64Image.startsWith("data:")) {
+                int commaIndex = base64Image.indexOf(",");
+                if (commaIndex != -1) {
+                    pureBase64 = base64Image.substring(commaIndex + 1);
+                }
+            }
+            byte[] imageBytes = Base64.getDecoder().decode(pureBase64);
+            
+            if (imageBytes.length < 4) {
+                throw new BusinessException("衣柜单品图片数据异常：文件过小！");
+            }
+            
+            // 校验 Magic Number (魔数)
+            boolean isJpeg = (imageBytes[0] == (byte)0xFF && imageBytes[1] == (byte)0xD8);
+            boolean isPng = (imageBytes[0] == (byte)0x89 && imageBytes[1] == (byte)0x50 && imageBytes[2] == (byte)0x4E && imageBytes[3] == (byte)0x47);
+            
+            if (!isJpeg && !isPng) {
+                String hexPrefix = String.format("%02X %02X %02X %02X", imageBytes[0], imageBytes[1], imageBytes[2], imageBytes[3]);
+                log.error("[AI Service] 衣柜单品图片格式非法！文件头(Hex): {}", hexPrefix);
+                throw new BusinessException("不支持的图片格式！请上传纯正的 JPG 或 PNG 图片 (系统拦截到未知文件头: " + hexPrefix + ")");
+            }
+        } catch (IllegalArgumentException e) {
+            log.error("[AI Service] 衣柜单品 Base64 解码失败", e);
+            throw new BusinessException("图片数据损坏，无法解码！");
+        }
         String url = "https://ark.cn-beijing.volces.com/api/v3/chat/completions";
 
         HttpHeaders headers = new HttpHeaders();
@@ -557,6 +587,35 @@ public class AiServiceImpl implements AiService {
     @Override
     public String analyzePortraitForTryOn(String base64Image) {
         log.info("[AI Service] 开始人像底图合规性审计...");
+
+        // 1. 提取并校验 Base64 图片魔数（拦截非 JPG/PNG）
+        try {
+            String pureBase64 = base64Image;
+            if (base64Image.startsWith("data:")) {
+                int commaIndex = base64Image.indexOf(",");
+                if (commaIndex != -1) {
+                    pureBase64 = base64Image.substring(commaIndex + 1);
+                }
+            }
+            byte[] imageBytes = Base64.getDecoder().decode(pureBase64);
+            
+            if (imageBytes.length < 4) {
+                throw new BusinessException("人像审计图片数据异常：文件过小！");
+            }
+            
+            // 校验 Magic Number
+            boolean isJpeg = (imageBytes[0] == (byte)0xFF && imageBytes[1] == (byte)0xD8);
+            boolean isPng = (imageBytes[0] == (byte)0x89 && imageBytes[1] == (byte)0x50 && imageBytes[2] == (byte)0x4E && imageBytes[3] == (byte)0x47);
+            
+            if (!isJpeg && !isPng) {
+                String hexPrefix = String.format("%02X %02X %02X %02X", imageBytes[0], imageBytes[1], imageBytes[2], imageBytes[3]);
+                log.error("[AI Service] 人像审计图片格式非法！文件头(Hex): {}", hexPrefix);
+                throw new BusinessException("不支持的图片格式！请上传纯正的 JPG 或 PNG 作为人像底图 (拦截到未知文件头: " + hexPrefix + ")");
+            }
+        } catch (IllegalArgumentException e) {
+            log.error("[AI Service] 人像审计 Base64 解码失败", e);
+            throw new BusinessException("图片数据损坏，无法解码！");
+        }
         String url = "https://ark.cn-beijing.volces.com/api/v3/chat/completions";
 
         HttpHeaders headers = new HttpHeaders();

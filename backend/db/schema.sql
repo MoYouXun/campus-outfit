@@ -56,3 +56,16 @@ CREATE TABLE IF NOT EXISTS `outfit` (
     KEY `idx_status_public` (`status`, `is_public`),
     KEY `idx_create_time` (`create_time`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='穿搭表';
+
+-- 3. AI 穿搭分析记录表 (用于持久化 AI 助手的分析与生图结果)
+CREATE TABLE IF NOT EXISTS `ai_analysis_record` (
+    `id`                BIGINT          NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+    `user_id`           BIGINT          NOT NULL COMMENT '所属用户ID',
+    `style_name`        VARCHAR(255)    NULL     COMMENT '分析建议风格名称',
+    `item_ids`          VARCHAR(1024)   NULL     COMMENT '建议搭配的柜内单品 ID 列表 (JSON 字符串)',
+    `result_image_url`  VARCHAR(1024)   NULL     COMMENT 'AI 生成的最终搭配效果图 (MinIO URL)',
+    `raw_result_json`   TEXT            NULL     COMMENT '原始对话 JSON 结果',
+    `create_time`       DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '记录创建时间',
+    PRIMARY KEY (`id`),
+    KEY `idx_user_id` (`user_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='AI 穿搭分析记录表';

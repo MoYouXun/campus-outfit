@@ -2,130 +2,106 @@ package com.campus.outfit.util;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.volcengine.service.visual.IVisualService;
-import com.volcengine.service.visual.impl.VisualServiceImpl;
-import jakarta.annotation.PostConstruct;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.HttpEntity;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
+import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
+import org.springframework.web.client.RestTemplate;
 
 import java.util.*;
 
 /**
- * 火山引擎 Seedream 图像生成工具类
+ * 火山引擎 Seedream 图像生成工具类 (基于豆包/方舟最新 API)
  */
 @Slf4j
 @Component
-@RequiredArgsConstructor
 public class SeedreamUtil {
 
     private final ObjectMapper objectMapper;
+    private final RestTemplate restTemplate;
 
-    @Value("${ai.ark.ak}")
-    private String accessKey;
+    @Value("${api.doubao.key}")
+    private String doubaoKey;
 
-    @Value("${ai.ark.sk}")
-    private String secretKey;
+    @Value("${api.doubao.endpoint-seedream}")
+    private String endpointId;
 
-    @Value("${ai.ark.model-id}")
-    private String modelId;
-
-    private IVisualService visualService;
-
-    @PostConstruct
-    public void init() {
-        log.info("[SeedreamUtil] 正在初始化火山引擎视觉服务客户端...");
-        this.visualService = VisualServiceImpl.getInstance();
-        this.visualService.setAccessKey(accessKey);
-        this.visualService.setSecretKey(secretKey);
-        log.info("[SeedreamUtil] 火山引擎视觉服务客户端初始化完成");
+    public SeedreamUtil(ObjectMapper objectMapper) {
+        this.objectMapper = objectMapper;
+        // 配置具有 60 秒超时时间的 RestTemplate
+        SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
+        factory.setConnectTimeout(10000); // 10秒连接超时
+        factory.setReadTimeout(60000);    // 60秒读取超时
+        this.restTemplate = new RestTemplate(factory);
     }
 
     /**
-     * 从多个 Base64 图片生成图像 (常用于图像融合/虚拟试衣)
+     * 从多个 Base64 图片生成图像 (使用豆包 Seedream 4.5 接口)
      * @param base64Images Base64 图片列表
      * @return 生成的网络图片 URL
      */
     public String generateImageFromMultipleBase64(List<String> base64Images) {
-        log.info("[SeedreamUtil] 开始基于多图生成图像，输入图片数量: {}", base64Images.size());
+        log.info("[SeedreamUtil] 开始多图融合生图请求, endpoint: {}, 包含图片张数: {}", endpointId, base64Images.size());
 
         try {
-            // 处理 Base64 前缀
-            List<String> pureBase64List = new ArrayList<>();
-            for (String rawBase64 : base64Images) {
-                String base64 = resolveAndFormatImage(rawBase64);
-                if (base64.startsWith("data:")) {
-                    int commaIndex = base64.indexOf(",");
-                    if (commaIndex != -1) {
-                        pureBase64List.add(base64.substring(commaIndex + 1));
-                        continue;
-                    }
-                }
-                pureBase64List.add(base64);
+            // 1. 准备并格式化参考图片
+            List<String> formattedBase64List = new ArrayList<>();
+            for (String raw : base64Images) {
+                formattedBase64List.add(resolveAndFormatImage(raw));
             }
 
-            // 构造请求体 (参考 dressing_diffusionV2 逻辑)
-            Map<String, Object> submitBody = new HashMap<>();
-            submitBody.put("req_key", "dressing_diffusionV2");
-            submitBody.put("binary_data_base64", pureBase64List);
-            // 将 return_url 放在提交阶段的 req_json 中
-            submitBody.put("req_json", "{\"return_url\":true}");
+            // 2. 构造 Ark 平台图像生成请求 Payload
+            String url = "https://ark.cn-beijing.volces.com/api/v3/images/generations";
+
+            HttpHeaders headers = new HttpHeaders();
+            headers.setContentType(MediaType.APPLICATION_JSON);
+            headers.setBearerAuth(doubaoKey);
+
+            Map<String, Object> requestBody = new HashMap<>();
+            requestBody.put("model", endpointId);
+            requestBody.put("prompt", "基于以下图片进行穿搭融合和生图，保持风格协调");
+            // Seedream 4.5/5.0 常用参考图字段为 reference_images
+            requestBody.put("reference_images", formattedBase64List);
+            requestBody.put("response_format", "url");
+
+            log.info("[SeedreamUtil] 正在向豆包接口发起 POST 请求...");
+            HttpEntity<Map<String, Object>> entity = new HttpEntity<>(requestBody, headers);
             
-            // 提交任务
-            Object submitResp = visualService.cvSubmitTask(submitBody);
-            JsonNode submitData = objectMapper.valueToTree(submitResp);
-            log.info("[SeedreamUtil] 任务提交响应: {}", submitData);
-            
-            if (submitData.path("code").asInt() != 10000) {
-                throw new RuntimeException("火山引擎任务提交失败: " + submitData.path("message").asText());
+            // 发送请求
+            String responseStr = restTemplate.postForObject(url, entity, String.class);
+            log.info("[SeedreamUtil] 接收到响应内容");
+
+            // 3. 解析响应结果
+            JsonNode root = objectMapper.readTree(responseStr);
+            if (root.has("error")) {
+                String errorMsg = root.path("error").path("message").asText();
+                log.error("[SeedreamUtil] 豆包 API 返回错误: {}", errorMsg);
+                throw new RuntimeException("豆包 API 异常: " + errorMsg);
             }
 
-            String taskId = submitData.path("data").path("task_id").asText();
-            if (taskId == null || taskId.isEmpty()) {
-                throw new RuntimeException("火山引擎任务提交成功但未返回 task_id");
+            // 提取 data[0].url
+            JsonNode dataNode = root.path("data");
+            if (dataNode.isArray() && !dataNode.isEmpty()) {
+                String resultUrl = dataNode.get(0).path("url").asText();
+                log.info("[SeedreamUtil] 图像生成成功, 返回 URL: {}", resultUrl);
+                return resultUrl;
+            } else {
+                log.error("[SeedreamUtil] 响应报文中未包含有效的图片数据: {}", responseStr);
+                throw new RuntimeException("豆包 API 未返回预期的图片链接");
             }
-            log.info("[SeedreamUtil] 任务提交成功，taskId: {}", taskId);
-
-            // 轮询结果
-            int maxAttempts = 60;
-            for (int attempt = 0; attempt < maxAttempts; attempt++) {
-                Thread.sleep(3000);
-                Map<String, Object> queryBody = new HashMap<>();
-                queryBody.put("req_key", "dressing_diffusionV2");
-                queryBody.put("task_id", taskId);
-                // 查询接口不需要 req_json，已移至提交阶段
-
-                Object queryResp = visualService.cvGetResult(queryBody);
-                JsonNode queryResult = objectMapper.valueToTree(queryResp);
-                log.debug("[SeedreamUtil] 任务查询响应 (第{}次): {}", attempt + 1, queryResult);
-
-                if (queryResult.path("code").asInt() != 10000) {
-                    throw new RuntimeException("火山引擎任务查询异常: " + queryResult.path("message").asText());
-                }
-
-                JsonNode dataNode = queryResult.path("data");
-                String status = dataNode.path("status").asText();
-                if ("done".equals(status)) {
-                    JsonNode imageUrls = dataNode.path("image_urls");
-                    if (imageUrls.isArray() && !imageUrls.isEmpty()) {
-                        String resultUrl = imageUrls.get(0).asText();
-                        log.info("[SeedreamUtil] 图像生成成功: {}", resultUrl);
-                        return resultUrl;
-                    }
-                } else if (!"generating".equals(status) && !"in_queue".equals(status)) {
-                    throw new RuntimeException("任务执行失败, 状态: " + status);
-                }
-            }
-            throw new RuntimeException("图像生成超时");
 
         } catch (Exception e) {
-            log.error("[SeedreamUtil] 图像产生失败: {}", e.getMessage(), e);
-            // 抛出原始错误消息，方便上层识别具体原因
-            throw new RuntimeException("图像生成失败: " + e.getMessage(), e);
+            log.error("[SeedreamUtil] 图像生成全流程异常: {}", e.getMessage(), e);
+            throw new RuntimeException("Seedream 生成服装融合图失败: " + e.getMessage(), e);
         }
     }
 
+    /**
+     * 图片地址解析辅助方法：支持 HTTP 下载或 Base64 清洗
+     */
     private String resolveAndFormatImage(String imageSource) {
         if (imageSource == null || imageSource.isEmpty()) {
             return "";
@@ -140,18 +116,19 @@ public class SeedreamUtil {
                     return "data:image/jpeg;base64," + base64;
                 }
             } catch (Exception e) {
-                log.error("AI 助手下载图片流失败, URL: {}", imageSource, e);
-                throw new RuntimeException("读取图片进行 Base64 编码失败: " + e.getMessage());
+                log.error("[SeedreamUtil] 下载图片失败, URL: {}", imageSource, e);
+                throw new RuntimeException("无法读取并下载网络图片: " + e.getMessage());
             }
         }
         
-        // 2. 如果本身就是 Base64 字符串，清洗多余前缀
+        // 2. 如果本身就是 Base64 字符串，清洗多余前缀并标准化
         String cleanBase64 = imageSource.replaceAll("(?i)^data:image/[^;]+;base64,", "");
         while (cleanBase64.toLowerCase().startsWith("data:image/")) {
             cleanBase64 = cleanBase64.replaceAll("(?i)^data:image/[^;]+;base64,", "");
         }
         cleanBase64 = cleanBase64.replaceAll("[\\r\\n\\s]", "");
         
+        // 统一添加 jpeg 头返回
         return "data:image/jpeg;base64," + cleanBase64;
     }
 }

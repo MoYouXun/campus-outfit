@@ -188,128 +188,98 @@ public class AiServiceImpl implements AiService {
     /**
      * 内部辅助方法：将本地或远程的网络图片URL下载并转为纯 Base64
      */
-    private String downloadImageAsBase64(String imageUrl) {
-        try {
-            java.net.URL url = new java.net.URL(imageUrl);
-            try (java.io.InputStream in = url.openStream();
-                 java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream()) {
-                byte[] buffer = new byte[8192];
-                int bytesRead;
-                while ((bytesRead = in.read(buffer)) != -1) {
-                    out.write(buffer, 0, bytesRead);
-                }
-                // 火山引擎 V2 只需要纯 Base64，不能带 "data:image/jpeg;base64," 前缀
-                return java.util.Base64.getEncoder().encodeToString(out.toByteArray());
-            }
-        } catch (Exception e) {
-            log.error("图片下载转码失败: {}", imageUrl, e);
-            throw new com.campus.outfit.exception.BusinessException("无法读取图片数据，请确保图片有效: " + e.getMessage());
+    private byte[] downloadImageBytes(String imageUrl) {
+        java.net.URI uri = java.net.URI.create(imageUrl);
+        ResponseEntity<byte[]> response = restTemplate.getForEntity(uri, byte[].class);
+        
+        if (!response.getStatusCode().is2xxSuccessful() || response.getBody() == null) {
+            throw new BusinessException("无法下载图片，HTTP状态码: " + response.getStatusCode());
         }
+        
+        byte[] bytes = response.getBody();
+        if (bytes.length < 4) {
+            throw new BusinessException("图片文件内容过小，只有 " + bytes.length + " 字节！");
+        }
+
+        // 校验 Magic Number (魔数)
+        boolean isJpeg = (bytes[0] == (byte)0xFF && bytes[1] == (byte)0xD8);
+        boolean isPng = (bytes[0] == (byte)0x89 && bytes[1] == (byte)0x50 && bytes[2] == (byte)0x4E && bytes[3] == (byte)0x47);
+
+        if (!isJpeg && !isPng) {
+            String hexPrefix = String.format("%02X %02X %02X %02X", bytes[0], bytes[1], bytes[2], bytes[3]);
+            String textTry = new String(bytes, 0, Math.min(bytes.length, 100), java.nio.charset.StandardCharsets.UTF_8);
+            log.error("[AI Try-On] 图片格式非法或被拦截！URL: {}, 文件头(Hex): {}, 文本预览: {}", imageUrl, hexPrefix, textTry);
+            throw new BusinessException("图片下载异常，可能由于权限被拦截。内容预览: " + textTry);
+        }
+        return bytes;
     }
 
     @Override
-    public String generateTryOnImage(String humanImageUrl, String upperGarmentUrl, String lowerGarmentUrl) {
+    public String generateTryOnImage(String personImageUrl, String outfitImageUrl) {
+        log.info("[AI Try-On] 切入异步换装模型 DressingDiffusionV2.");
         try {
-            // 1. 基础校验
-            boolean hasUpper = upperGarmentUrl != null && !upperGarmentUrl.isEmpty();
-            boolean hasLower = lowerGarmentUrl != null && !lowerGarmentUrl.isEmpty();
+            // 1. 下载图片并转 Base64
+            byte[] personBytes = downloadImageBytes(personImageUrl);
+            byte[] outfitBytes = downloadImageBytes(outfitImageUrl);
+            String personBase64 = java.util.Base64.getEncoder().encodeToString(personBytes);
+            String outfitBase64 = java.util.Base64.getEncoder().encodeToString(outfitBytes);
 
-            if (!hasUpper && !hasLower) {
-                throw new com.campus.outfit.exception.BusinessException("至少需要提供一件上装或下装进行试衣");
-            }
-
-            // =====================================================================
-            // 2. 发起异步生图任务 (Submit Task) - 严格遵循官方文档
-            // =====================================================================
-            Map<String, Object> submitBody = new java.util.HashMap<>();
+            // 2. 构造 Base64 提交请求
+            Map<String, Object> submitBody = new HashMap<>();
             submitBody.put("req_key", "dressing_diffusionV2");
-            submitBody.put("req_image_store_type", 0); // 【关键修复1】声明使用 binary_data_base64 传图
+            submitBody.put("req_image_store_type", 0);
+            submitBody.put("binary_data_base64", Arrays.asList(personBase64, outfitBase64));
+            submitBody.put("model", new HashMap<String, String>());
+            Map<String, Object> garment = new HashMap<>();
+            Map<String, String> garmentItem = new HashMap<>();
+            garmentItem.put("type", "full");
+            garment.put("data", Arrays.asList(garmentItem));
+            submitBody.put("garment", garment);
 
-            // 组装 binary_data_base64 数组：第一张必须是人像底图
-            java.util.List<String> base64List = new java.util.ArrayList<>();
-            log.info("[AI Try-On] 正在转换人像底图为 Base64...");
-            base64List.add(downloadImageAsBase64(humanImageUrl));
-
-            // 组装 garment.data 数组
-            java.util.List<Map<String, String>> garmentData = new java.util.ArrayList<>();
-            if (hasUpper) {
-                log.info("[AI Try-On] 正在转换上装图片为 Base64...");
-                base64List.add(downloadImageAsBase64(upperGarmentUrl));
-                garmentData.add(java.util.Map.of("type", "upper"));
+            // 3. 提交任务
+            Object submitResp = visualService.cvSubmitTask(submitBody);
+            JsonNode submitData = objectMapper.valueToTree(submitResp);
+            int code = submitData.path("code").asInt();
+            if (code != 10000 && !submitData.has("task_id")) {
+                throw new BusinessException("AI换装提交异常: " + submitData.path("message").asText());
             }
-            if (hasLower) {
-                log.info("[AI Try-On] 正在转换下装图片为 Base64...");
-                base64List.add(downloadImageAsBase64(lowerGarmentUrl));
-                garmentData.add(java.util.Map.of("type", "bottom")); // 【关键修复2】必须是 "bottom"
-            }
+            String taskId = submitData.path("data").path("task_id").asText();
 
-            submitBody.put("binary_data_base64", base64List);
-            submitBody.put("garment", java.util.Map.of("data", garmentData)); // 【关键修复3】garment 是外层参数
-
-            log.info("[AI Try-On] 正在提交 V2 换装任务...");
-            com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
-            com.fasterxml.jackson.databind.JsonNode submitNode;
-            try {
-                Object submitRes = visualService.cvProcess(submitBody);
-                submitNode = mapper.readTree(mapper.writeValueAsString(submitRes));
-            } catch (Exception e) {
-                log.error("火山引擎 AI 换装底层调用原始异常堆栈: ", e);
-                throw new BusinessException("AI 换装服务底层调用失败，请检查服务状态或配置: " + e.getMessage());
-            }
-
-            if (submitNode.path("code").asInt() != 10000) {
-                throw new BusinessException("提交换装任务失败: " + submitNode.path("message").asText());
-            }
-
-            String taskId = submitNode.path("data").path("task_id").asText();
-            log.info("[AI Try-On] 任务提交成功，云端 Task ID: {}", taskId);
-
-            // =====================================================================
-            // 3. 轮询获取结果 (Query Task) - 严格遵循官方文档
-            // =====================================================================
-            Map<String, Object> queryBody = new java.util.HashMap<>();
-            queryBody.put("req_key", "dressing_diffusionV2");
-            queryBody.put("task_id", taskId);
-            queryBody.put("req_json", "{\"return_url\":true}"); // 文档指出 return_url 放在 req_json 中
-
-            for (int i = 1; i <= 40; i++) {
-                log.info("[AI Try-On] 正在查询任务进度 (第 {}/40 次)...", i);
-                Thread.sleep(3000); // 每次等3秒
-
-                try {
-                    Object queryRes = visualService.cvGetResult(queryBody);
-                    com.fasterxml.jackson.databind.JsonNode queryNode = mapper.readTree(mapper.writeValueAsString(queryRes));
-
-                    int code = queryNode.path("code").asInt();
-                    if (code == 10000) {
-                        // 【关键修复4】状态是 String，不是 int！
-                        String status = queryNode.path("data").path("status").asText();
-                        log.info("[AI Try-On] 当前状态: {}", status);
-
-                        if ("done".equals(status)) {
-                            String resultUrl = queryNode.path("data").path("image_urls").get(0).asText();
-                            log.info("[AI Try-On] 换装大成功！Result URL: {}", resultUrl);
-                            return resultUrl;
-                        } else if ("not_found".equals(status) || "expired".equals(status)) {
-                            throw new com.campus.outfit.exception.BusinessException("AI 换装失败，任务状态: " + status);
-                        }
-                        // 如果是 in_queue 或 generating，继续循环等待
-                    } else {
-                        log.warn("[AI Try-On] 轮询接口返回非 10000 状态码: {}", queryNode.toString());
+            // 4. 轮询结果
+            int maxAttempts = 40;
+            for (int attempt = 0; attempt < maxAttempts; attempt++) {
+                Thread.sleep(3000);
+                Map<String, Object> queryBody = new HashMap<>();
+                queryBody.put("req_key", "dressing_diffusionV2");
+                queryBody.put("task_id", taskId);
+                queryBody.put("req_json", "{\"return_url\":true}");
+                
+                Object queryResp = visualService.cvGetResult(queryBody);
+                JsonNode queryResult = objectMapper.valueToTree(queryResp);
+                
+                if (queryResult.path("code").asInt() != 10000) {
+                    throw new BusinessException("AI换装轮询异常: " + queryResult.path("message").asText());
+                }
+                
+                JsonNode dataNode = queryResult.path("data");
+                String status = dataNode.path("status").asText();
+                if ("done".equals(status)) {
+                    JsonNode imageUrls = dataNode.path("image_urls");
+                    if (imageUrls.isArray() && !imageUrls.isEmpty()) {
+                        return imageUrls.get(0).asText();
                     }
-                } catch (Exception e) {
-                    log.warn("[AI Try-On] 轮询网络波动，继续等待大模型作画...", e);
+                    JsonNode base64s = dataNode.path("binary_data_base64");
+                    if (base64s.isArray() && !base64s.isEmpty()) {
+                        return "data:image/png;base64," + base64s.get(0).asText();
+                    }
+                } else if (!"generating".equals(status) && !"in_queue".equals(status)) {
+                    throw new BusinessException("换装任务执行失败, 状态: " + status);
                 }
             }
-
-            throw new com.campus.outfit.exception.BusinessException("换装排队超时，魔法失效了，请稍后再试");
-
+            throw new BusinessException("换装任务超时");
         } catch (Exception e) {
-            log.error("[AI Try-On] 换装流程彻底失败", e);
-            if (e instanceof com.campus.outfit.exception.BusinessException) {
-                throw (com.campus.outfit.exception.BusinessException) e;
-            }
-            throw new RuntimeException("系统魔法异常: " + e.getMessage());
+            log.error("[AI Try-On] 换装流程失败", e);
+            throw new BusinessException("AI换装失败: " + e.getMessage());
         }
     }
 
@@ -342,40 +312,6 @@ public class AiServiceImpl implements AiService {
         return content.trim();
     }
 
-    /**
-     * 严格模式下载图片字节流，并进行 Content-Type 校验。
-     * 防止下载到 XML 错误报文导致 AI 解码失败 (50207)。
-     */
-    private byte[] downloadImageBytes(String imageUrl) {
-        // 使用 URI 包装以防止 RestTemplate 二次 UrlEncode 破坏 MinIO 签名
-        java.net.URI uri = java.net.URI.create(imageUrl);
-        ResponseEntity<byte[]> response = restTemplate.getForEntity(uri, byte[].class);
-        
-        if (!response.getStatusCode().is2xxSuccessful() || response.getBody() == null) {
-            throw new RuntimeException("无法下载图片，HTTP状态码: " + response.getStatusCode());
-        }
-        
-        byte[] bytes = response.getBody();
-        if (bytes.length < 4) {
-            throw new RuntimeException("图片文件内容过小，只有 " + bytes.length + " 字节！");
-        }
-
-        // 校验 Magic Number (魔数)
-        // JPEG: FF D8
-        boolean isJpeg = (bytes[0] == (byte)0xFF && bytes[1] == (byte)0xD8);
-        // PNG: 89 50 4E 47
-        boolean isPng = (bytes[0] == (byte)0x89 && bytes[1] == (byte)0x50 && bytes[2] == (byte)0x4E && bytes[3] == (byte)0x47);
-
-        if (!isJpeg && !isPng) {
-            // 如果不是真正的图片，提取前四个字节的十六进制和文本预览以便排查
-            String hexPrefix = String.format("%02X %02X %02X %02X", bytes[0], bytes[1], bytes[2], bytes[3]);
-            String textTry = new String(bytes, 0, Math.min(bytes.length, 100), java.nio.charset.StandardCharsets.UTF_8);
-            log.error("[AI Try-On] 图片格式非法或不受支持！URL: {}, 文件头(Hex): {}, 文本预览: {}", imageUrl, hexPrefix, textTry);
-            throw new RuntimeException("您上传的图片不是标准的 JPG 或 PNG 格式（可能是损坏的文件或不支持的 WebP 格式）。请使用系统自带截图工具重新保存为标准 JPG 格式后再上传重试！");
-        }
-        
-        return bytes;
-    }
 
     @Override
     public String analyzeOutfitWithWardrobe(String base64Image, Long userId, String sessionId, List<WardrobeItem> wardrobeItems) {

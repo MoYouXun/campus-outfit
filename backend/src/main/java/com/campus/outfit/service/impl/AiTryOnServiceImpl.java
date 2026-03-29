@@ -24,10 +24,13 @@ public class AiTryOnServiceImpl implements AiTryOnService {
                 userId, request.getUpperGarmentUrl(), request.getLowerGarmentUrl());
         
         // 调用统一的 AI 服务接口进行图像生成，支持上下装同步处理
+        // 获取服饰：目前 DressingDiffusionV2 全身模式仅支持单张服饰图，优先取上装
+        String outfitUrl = request.getUpperGarmentUrl() != null ? 
+                request.getUpperGarmentUrl() : request.getLowerGarmentUrl();
+        
         String resultUrl = aiService.generateTryOnImage(
                 request.getHumanImageUrl(), 
-                request.getUpperGarmentUrl(), 
-                request.getLowerGarmentUrl()
+                outfitUrl
         );
         
         AiTryOnResponse response = new AiTryOnResponse();

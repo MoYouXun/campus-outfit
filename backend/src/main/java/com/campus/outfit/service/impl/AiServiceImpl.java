@@ -575,4 +575,68 @@ public class AiServiceImpl implements AiService {
             throw new RuntimeException("生成图像失败：" + e.getMessage());
         }
     }
+
+    @Override
+    public String analyzeWardrobeItem(String base64Image) {
+        log.info("[AI Service] 开始分析单品图片并鉴定合法性...");
+        String url = "https://ark.cn-beijing.volces.com/api/v3/chat/completions";
+
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_JSON);
+        headers.setBearerAuth(doubaoKey);
+
+        // 1. 系统提示词：极其严苛的单品鉴定逻辑
+        Map<String, Object> systemMessage = new HashMap<>();
+        systemMessage.put("role", "system");
+        systemMessage.put("content", "你是一个严苛的衣柜单品鉴定专家。用户会上传一张图片，你需要判断这是否是一张纯粹的【单件衣服/单品】图片。如果图片中包含人物穿着一套衣服（即穿搭）、或者同时出现了多件不同的衣服杂乱堆叠，请判定为非单品（isSingleItem 为 false）。\n" +
+                "你必须严格输出以下 JSON 格式，不要包含任何 Markdown 标记或描述字句：\n" +
+                "{\n" +
+                "  \"isSingleItem\": true/false,\n" +
+                "  \"categoryMain\": \"上装/下装/裙装/鞋靴/配饰等中的一个\",\n" +
+                "  \"categorySub\": \"具体品类如卫衣/牛仔裤\",\n" +
+                "  \"color\": \"最主要的一种颜色\",\n" +
+                "  \"season\": \"春/夏/秋/冬中的一个或多个（以逗号分隔）\",\n" +
+                "  \"material\": \"材质\",\n" +
+                "  \"reason\": \"如果 isSingleItem 为 false，请在这里简短给出拒绝原因，比如：图中包含人物穿搭 / 包含多件衣服\"\n" +
+                "}");
+
+        // 2. 多模态 User Message
+        List<Map<String, Object>> contentList = new ArrayList<>();
+        Map<String, Object> textPart = new HashMap<>();
+        textPart.put("type", "text");
+        textPart.put("text", "请鉴定并提取该单品的属性字段。");
+        contentList.add(textPart);
+
+        Map<String, Object> imgPart = new HashMap<>();
+        imgPart.put("type", "image_url");
+        Map<String, String> urlMap = new HashMap<>();
+        // 自动补全 data URI 前缀以防万一
+        String dataUri = base64Image.startsWith("data:") ? base64Image : "data:image/jpeg;base64," + base64Image;
+        urlMap.put("url", dataUri);
+        imgPart.put("image_url", urlMap);
+        contentList.add(imgPart);
+
+        Map<String, Object> userMessage = new HashMap<>();
+        userMessage.put("role", "user");
+        userMessage.put("content", contentList);
+
+        // 3. 构建请求体
+        Map<String, Object> requestBody = new HashMap<>();
+        requestBody.put("model", endpointId);
+        requestBody.put("messages", Arrays.asList(systemMessage, userMessage));
+
+        HttpEntity<Map<String, Object>> entity = new HttpEntity<>(requestBody, headers);
+
+        try {
+            String responseStr = restTemplate.postForObject(url, entity, String.class);
+            JsonNode root = objectMapper.readTree(responseStr);
+            String content = root.path("choices").path(0).path("message").path("content").asText();
+            
+            log.info("[AI Service] 单品鉴定原始回复: {}", content);
+            return extractJson(content);
+        } catch (Exception e) {
+            log.error("单品鉴定失败: {}", e.getMessage());
+            throw new RuntimeException("AI 鉴定单品服务异常", e);
+        }
+    }
 }

@@ -1,5 +1,6 @@
 import axios from 'axios'
 import type { AxiosInstance, InternalAxiosRequestConfig, AxiosResponse } from 'axios'
+import { ElMessage } from 'element-plus'
 
 // 创建 axios 实例
 const service: AxiosInstance = axios.create({
@@ -44,7 +45,7 @@ service.interceptors.response.use(
     
     // 根据项目的实际情况，处理响应数据
     if (res.code !== 200) {
-      console.error('Response Error:', res.message)
+      ElMessage.error(res.message || '系统错误')
       
       // 当 token 过期或无效时，跳转到登录页
       if (res.code === 401) {

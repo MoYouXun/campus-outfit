@@ -46,4 +46,11 @@ public interface AiService {
      * @return 生成出的图片 URL
      */
     String generateImage(String prompt);
+
+    /**
+     * 分析并鉴定电子衣柜单品
+     * @param base64Image 图片的 Base64 编码
+     * @return 大模型返回的 JSON 结果字符串
+     */
+    String analyzeWardrobeItem(String base64Image);
 }

@@ -20,6 +20,7 @@ const privateOutfits = ref<any[]>([]) // 私人衣橱
 const favoriteOutfits = ref<any[]>([]) // 我的收藏
 const wardrobeItems = ref<any[]>([]) // 我的衣柜
 const wardrobeLoading = ref(false)
+const isUploading = ref(false)
 const isFollowing = ref(false)
 const userStore = useUserStore()
 const isCurrentUser = ref(false)
@@ -39,16 +40,28 @@ const loadWardrobe = async () => {
   }
 }
 
-const handleWardrobeUpload = async (file: File) => {
+const handleWardrobeBatchUpload = async (event: Event) => {
+  const input = event.target as HTMLInputElement
+  if (!input.files || input.files.length === 0) return
+
+  const files = Array.from(input.files)
+  isUploading.value = true
+  
   try {
-    wardrobeLoading.value = true
-    await uploadWardrobeItem(file)
-    ElMessage.success('单品上传成功')
-    loadWardrobe()
-  } catch (e: any) {
-    ElMessage.error(e.response?.data?.message || '上传失败')
+    for (const file of files) {
+      try {
+        await uploadWardrobeItem(file)
+        console.log(`单品 ${file.name} 上传并识别完成`)
+      } catch (e: any) {
+        // 单个文件识别失败（如非单品逻辑拦截），继续处理下一个
+        console.error(`单品 ${file.name} 处理失败:`, e)
+      }
+    }
+    ElMessage.success('批量处理完成')
+    loadWardrobe() // 统一刷新一次
   } finally {
-    wardrobeLoading.value = false
+    isUploading.value = false
+    input.value = '' // 重置 input 以便下次选择同一张图
   }
 }
 
@@ -282,7 +295,7 @@ onMounted(loadUser)
             </div>
           </el-tab-pane>
           <el-tab-pane v-if="isCurrentUser" label="我的衣柜" name="wardrobe">
-            <div class="pt-4" v-loading="wardrobeLoading">
+            <div class="pt-4" v-loading="isUploading || wardrobeLoading" element-loading-text="AI 正在努力分析中...">
               <div class="flex justify-between items-center mb-6">
                 <div>
                   <h3 class="text-lg font-bold flex items-center gap-2">
@@ -293,15 +306,18 @@ onMounted(loadUser)
                     </span>
                   </h3>
                 </div>
-                <el-upload
-                  action="#"
-                  :show-file-list="false"
-                  :auto-upload="false"
+                <!-- 隐藏的批量上传 input -->
+                <input
+                  type="file"
+                  ref="fileInputRef"
+                  multiple
                   accept="image/*"
-                  :on-change="(file: any) => handleWardrobeUpload(file.raw)"
-                >
-                  <el-button type="primary" :icon="Plus" round>上传单品</el-button>
-                </el-upload>
+                  class="hidden"
+                  @change="handleWardrobeBatchUpload"
+                />
+                <el-button type="primary" :icon="Plus" round @click="() => ( $refs.fileInputRef as HTMLInputElement ).click()">
+                  批量上传单品
+                </el-button>
               </div>
 
               <div v-if="wardrobeItems.length === 0" class="py-20 text-center bg-secondary/10 rounded-3xl border-2 border-dashed border-border/50">

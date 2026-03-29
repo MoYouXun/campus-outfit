@@ -4,13 +4,18 @@ import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.campus.outfit.entity.WardrobeItem;
 import com.campus.outfit.mapper.WardrobeItemMapper;
+import com.campus.outfit.exception.BusinessException;
+import com.campus.outfit.service.AiService;
 import com.campus.outfit.service.MinioService;
 import com.campus.outfit.service.WardrobeItemService;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.util.Base64;
 import java.util.List;
 
 /**
@@ -23,36 +28,66 @@ public class WardrobeItemServiceImpl extends ServiceImpl<WardrobeItemMapper, War
     @Autowired
     private MinioService minioService;
 
+    @Autowired
+    private AiService aiService;
+
+    private final ObjectMapper objectMapper = new ObjectMapper();
+
     @Override
     public WardrobeItem uploadAndAnalyzeItem(MultipartFile file, Long userId) {
+        String objectName = null;
         try {
             // 1. 上传图片到 MinIO
-            String objectName = minioService.uploadImage(file);
+            objectName = minioService.uploadImage(file);
             String originalImageUrl = minioService.getImageUrl(objectName);
 
-            // 2. 创建 Mock AI 识别结果
+            // 2. 将上传文件转为 Base64 以供 AI 视觉模型分析
+            byte[] fileBytes = file.getBytes();
+            String base64Content = Base64.getEncoder().encodeToString(fileBytes);
+            String contentType = file.getContentType();
+            String dataUri = "data:" + (contentType != null ? contentType : "image/jpeg") + ";base64," + base64Content;
+
+            // 3. 调用 AI 视觉服务进行单品鉴定与属性分析
+            log.info("[Wardrobe] 正在对用户 {} 上传的单品进行 AI 鉴定...", userId);
+            String aiJson = aiService.analyzeWardrobeItem(dataUri);
+            JsonNode rootNode = objectMapper.readTree(aiJson);
+
+            // 4. 核心逻辑拦截：判定是否为有效单品
+            boolean isSingleItem = rootNode.path("isSingleItem").asBoolean();
+            if (!isSingleItem) {
+                String reason = rootNode.path("reason").asText("识别到非单品内容（如穿搭照或杂乱背景）");
+                log.warn("[Wardrobe] AI 鉴定未通过，原因: {}, 正在执行存储回滚...", reason);
+                // 物理删除已上传的冗余文件
+                minioService.removeObject(objectName);
+                throw new BusinessException("上传失败：" + reason);
+            }
+
+            // 5. 校验通过，提取结构化属性并持久化
             WardrobeItem item = new WardrobeItem();
             item.setUserId(userId);
             item.setOriginalImageUrl(originalImageUrl);
             
-            // 模拟 AI 识别数据
-            item.setCategoryMain("上装");
-            item.setCategorySub("卫衣");
-            item.setColor("黑色");
-            item.setMaterial("纯棉");
-            item.setSeason("秋,冬");
-            
-            // 模拟原始 AI 标签 JSON
-            String mockAiTags = "{\"style\": \"休闲\", \"elements\": [\"连帽\", \"宽松\"], \"accuracy\": 0.98}";
-            item.setAiRawTags(mockAiTags);
+            // 从 AI JSON 中提取属性映射到实体类字段
+            item.setCategoryMain(rootNode.path("categoryMain").asText("其他"));
+            item.setCategorySub(rootNode.path("categorySub").asText("未知品类"));
+            item.setColor(rootNode.path("color").asText("未知颜色"));
+            item.setMaterial(rootNode.path("material").asText("未知材质"));
+            item.setSeason(rootNode.path("season").asText("全季节"));
+            item.setAiRawTags(aiJson);
 
-            // 3. 持久化到数据库
+            log.info("[Wardrobe] AI 鉴定通过，识别为：{} - {} - {}", item.getCategoryMain(), item.getCategorySub(), item.getColor());
+            
+            // 6. 持久化到数据库
             this.save(item);
 
             return item;
+        } catch (BusinessException e) {
+            // 业务异常直接透传，由全局异常处理器捕获
+            throw e;
         } catch (Exception e) {
-            log.error("单品上传与 AI 分析失败", e);
-            throw new RuntimeException("衣柜单品处理异常：" + e.getMessage());
+            log.error("单品上传与 AI 分析流程异常", e);
+            // 出现非业务预期的系统异常时进行包装
+            throw new RuntimeException("系统处理单品异常：" + e.getMessage());
         }
     }
 

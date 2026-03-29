@@ -6,6 +6,7 @@ import io.minio.MakeBucketArgs;
 import io.minio.MinioClient;
 import io.minio.PutObjectArgs;
 import io.minio.http.Method;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
@@ -15,6 +16,7 @@ import java.io.InputStream;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 
+@Slf4j
 @Service
 public class MinioService {
 
@@ -94,5 +96,22 @@ public class MinioService {
                         .object(objectName)
                         .expiry(7, TimeUnit.DAYS)
                         .build());
+    }
+
+    /**
+     * 删除 MinIO 中的对象
+     * @param objectName 对象名称
+     */
+    public void removeObject(String objectName) {
+        try {
+            minioClient.removeObject(
+                    io.minio.RemoveObjectArgs.builder()
+                            .bucket(bucketName)
+                            .object(objectName)
+                            .build());
+            log.info("[MinIO] 成功删除对象: {}", objectName);
+        } catch (Exception e) {
+            log.error("[MinIO] 删除对象失败: {}, {}", objectName, e.getMessage());
+        }
     }
 }

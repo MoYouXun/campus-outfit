@@ -107,28 +107,46 @@ public class SeedreamUtil {
             return "";
         }
         
-        // 1. 如果是 HTTP/HTTPS 链接，先下载图片再转 Base64
-        if (imageSource.startsWith("http://") || imageSource.startsWith("https://")) {
-            try (java.io.InputStream is = java.net.URI.create(imageSource).toURL().openStream()) {
-                byte[] imageBytes = is.readAllBytes();
-                if (imageBytes != null) {
-                    String base64 = java.util.Base64.getEncoder().encodeToString(imageBytes);
-                    return "data:image/jpeg;base64," + base64;
+        try {
+            byte[] imageBytes = null;
+            // 1. 如果是 HTTP/HTTPS 链接，先下载图片
+            if (imageSource.startsWith("http://") || imageSource.startsWith("https://")) {
+                try (java.io.InputStream is = java.net.URI.create(imageSource).toURL().openStream()) {
+                    imageBytes = is.readAllBytes();
+                } catch (Exception e) {
+                    log.error("[SeedreamUtil] 下载图片失败, URL: {}", imageSource, e);
+                    throw new RuntimeException("无法读取并下载网络图片: " + e.getMessage());
                 }
-            } catch (Exception e) {
-                log.error("[SeedreamUtil] 下载图片失败, URL: {}", imageSource, e);
-                throw new RuntimeException("无法读取并下载网络图片: " + e.getMessage());
+            } else {
+                // 2. 如果本身就是 Base64 字符串，解码为字节数组以便后续统一压缩
+                String cleanBase64 = imageSource.replaceAll("(?i)^data:image/[^;]+;base64,", "");
+                while (cleanBase64.toLowerCase().startsWith("data:image/")) {
+                    cleanBase64 = cleanBase64.replaceAll("(?i)^data:image/[^;]+;base64,", "");
+                }
+                cleanBase64 = cleanBase64.replaceAll("[\\r\\n\\s]", "");
+                imageBytes = java.util.Base64.getDecoder().decode(cleanBase64);
             }
+
+            if (imageBytes != null && imageBytes.length > 0) {
+                // 3. 统一进行压缩处理 (使用项目中已有的 Thumbnailator)
+                // 限制最大分辨率为 1280x1280，质量 0.8，强制转码为 JPG 以减小体积
+                java.io.ByteArrayOutputStream baos = new java.io.ByteArrayOutputStream();
+                net.coobird.thumbnailator.Thumbnails.of(new java.io.ByteArrayInputStream(imageBytes))
+                        .size(1280, 1280)
+                        .outputFormat("jpg")
+                        .outputQuality(0.8)
+                        .toOutputStream(baos);
+                
+                String base64 = java.util.Base64.getEncoder().encodeToString(baos.toByteArray());
+                return "data:image/jpeg;base64," + base64;
+            }
+            
+        } catch (Exception e) {
+            log.error("[SeedreamUtil] 处理并压缩图片失败: {}", e.getMessage(), e);
+            // 兜底：如果处理失败，尝试以原样返回（可能仍会触发 Socket 异常，但保证了代码执行不中断）
+            return imageSource;
         }
-        
-        // 2. 如果本身就是 Base64 字符串，清洗多余前缀并标准化
-        String cleanBase64 = imageSource.replaceAll("(?i)^data:image/[^;]+;base64,", "");
-        while (cleanBase64.toLowerCase().startsWith("data:image/")) {
-            cleanBase64 = cleanBase64.replaceAll("(?i)^data:image/[^;]+;base64,", "");
-        }
-        cleanBase64 = cleanBase64.replaceAll("[\\r\\n\\s]", "");
-        
-        // 统一添加 jpeg 头返回
-        return "data:image/jpeg;base64," + cleanBase64;
+
+        return "";
     }
 }

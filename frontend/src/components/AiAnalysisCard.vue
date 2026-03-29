@@ -93,7 +93,7 @@ const handlePublish = async (status: 'PUBLISHED' | 'PRIVATE') => {
           <p>上传图片以获取专属 AI 分析报告</p>
         </div>
 
-        <div v-else class="animate-fade-in w-full h-full space-y-6">
+        <div v-else class="animate-fade-in w-full h-full space-y-6 transform-gpu antialiased" style="backface-visibility: hidden; will-change: transform, opacity;">
           <h3 class="text-xl font-bold flex items-center gap-2">
             <el-icon class="text-primary"><MagicStick /></el-icon> 分析报告生成完毕
           </h3>

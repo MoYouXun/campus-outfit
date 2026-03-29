@@ -44,10 +44,26 @@
     @apply border-border;
   }
 
+  html {
+    scrollbar-gutter: stable;
+  }
+
   body {
     @apply bg-background text-foreground antialiased;
     font-family: 'Inter', sans-serif;
     transition: background-color 0.4s ease-in-out, color 0.4s ease-in-out;
+  }
+
+  /* 修复 Element Plus 开启预览时锁定滚动条导致的页面跳动 (配合 scrollbar-gutter 使用) */
+  body.el-popup-parent--hidden {
+    padding-right: 0 !important;
+  }
+
+  /* 开启预览蒙层和画布的硬件加速，解决 GPU 渲染重绘导致的闪烁 */
+  .el-image-viewer__mask {
+    transform: translateZ(0);
+    will-change: transform, opacity;
+    backface-visibility: hidden;
   }
 }
 

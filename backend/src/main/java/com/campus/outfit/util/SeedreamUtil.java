@@ -2,7 +2,6 @@ package com.campus.outfit.util;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import org.springframework.web.client.RestTemplate;
 import com.volcengine.service.visual.IVisualService;
 import com.volcengine.service.visual.impl.VisualServiceImpl;
 import jakarta.annotation.PostConstruct;
@@ -68,18 +67,24 @@ public class SeedreamUtil {
 
             // 构造请求体 (参考 dressing_diffusionV2 逻辑)
             Map<String, Object> submitBody = new HashMap<>();
-            submitBody.put("req_key", "dressing_diffusionV2"); // 默认为换装模型，可根据 modelId 或业务调整
+            submitBody.put("req_key", "dressing_diffusionV2");
             submitBody.put("binary_data_base64", pureBase64List);
+            // 将 return_url 放在提交阶段的 req_json 中
+            submitBody.put("req_json", "{\"return_url\":true}");
             
             // 提交任务
             Object submitResp = visualService.cvSubmitTask(submitBody);
             JsonNode submitData = objectMapper.valueToTree(submitResp);
+            log.info("[SeedreamUtil] 任务提交响应: {}", submitData);
             
-            if (submitData.path("code").asInt() != 10000 && !submitData.has("task_id")) {
+            if (submitData.path("code").asInt() != 10000) {
                 throw new RuntimeException("火山引擎任务提交失败: " + submitData.path("message").asText());
             }
 
             String taskId = submitData.path("data").path("task_id").asText();
+            if (taskId == null || taskId.isEmpty()) {
+                throw new RuntimeException("火山引擎任务提交成功但未返回 task_id");
+            }
             log.info("[SeedreamUtil] 任务提交成功，taskId: {}", taskId);
 
             // 轮询结果
@@ -89,10 +94,11 @@ public class SeedreamUtil {
                 Map<String, Object> queryBody = new HashMap<>();
                 queryBody.put("req_key", "dressing_diffusionV2");
                 queryBody.put("task_id", taskId);
-                queryBody.put("req_json", "{\"return_url\":true}");
+                // 查询接口不需要 req_json，已移至提交阶段
 
                 Object queryResp = visualService.cvGetResult(queryBody);
                 JsonNode queryResult = objectMapper.valueToTree(queryResp);
+                log.debug("[SeedreamUtil] 任务查询响应 (第{}次): {}", attempt + 1, queryResult);
 
                 if (queryResult.path("code").asInt() != 10000) {
                     throw new RuntimeException("火山引擎任务查询异常: " + queryResult.path("message").asText());
@@ -115,11 +121,10 @@ public class SeedreamUtil {
 
         } catch (Exception e) {
             log.error("[SeedreamUtil] 图像产生失败: {}", e.getMessage(), e);
-            throw new RuntimeException("图像生成异常", e);
+            // 抛出原始错误消息，方便上层识别具体原因
+            throw new RuntimeException("图像生成失败: " + e.getMessage(), e);
         }
     }
-
-    private final RestTemplate restTemplate = new RestTemplate();
 
     private String resolveAndFormatImage(String imageSource) {
         if (imageSource == null || imageSource.isEmpty()) {
@@ -128,15 +133,15 @@ public class SeedreamUtil {
         
         // 1. 如果是 HTTP/HTTPS 链接，先下载图片再转 Base64
         if (imageSource.startsWith("http://") || imageSource.startsWith("https://")) {
-            try {
-                byte[] imageBytes = restTemplate.getForObject(imageSource, byte[].class);
+            try (java.io.InputStream is = java.net.URI.create(imageSource).toURL().openStream()) {
+                byte[] imageBytes = is.readAllBytes();
                 if (imageBytes != null) {
                     String base64 = java.util.Base64.getEncoder().encodeToString(imageBytes);
                     return "data:image/jpeg;base64," + base64;
                 }
             } catch (Exception e) {
                 log.error("AI 助手下载图片流失败, URL: {}", imageSource, e);
-                throw new RuntimeException("读取图片进行 Base64 编码失败");
+                throw new RuntimeException("读取图片进行 Base64 编码失败: " + e.getMessage());
             }
         }
         

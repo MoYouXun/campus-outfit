@@ -149,16 +149,15 @@ public class DoubaoUtil {
         
         // 1. 如果是 HTTP/HTTPS 链接，先下载图片再转 Base64
         if (imageSource.startsWith("http://") || imageSource.startsWith("https://")) {
-            try {
-                // 使用内部定义的 restTemplate 或新建一个
-                byte[] imageBytes = restTemplate.getForObject(imageSource, byte[].class);
+            try (java.io.InputStream is = java.net.URI.create(imageSource).toURL().openStream()) {
+                byte[] imageBytes = is.readAllBytes();
                 if (imageBytes != null) {
                     String base64 = java.util.Base64.getEncoder().encodeToString(imageBytes);
                     return "data:image/jpeg;base64," + base64;
                 }
             } catch (Exception e) {
                 log.error("AI 助手下载图片流失败, URL: {}", imageSource, e);
-                throw new RuntimeException("读取图片进行 Base64 编码失败");
+                throw new RuntimeException("读取图片进行 Base64 编码失败: " + e.getMessage());
             }
         }
         

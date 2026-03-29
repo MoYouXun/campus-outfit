@@ -1,9 +1,12 @@
 package com.campus.outfit.service.impl;
 
+import com.campus.outfit.entity.AiAnalysisRecord;
 import com.campus.outfit.entity.WardrobeItem;
 import com.campus.outfit.exception.BusinessException;
+import com.campus.outfit.mapper.AiAnalysisRecordMapper;
 import com.campus.outfit.mapper.WardrobeItemMapper;
 import com.campus.outfit.service.AiAssistantService;
+import com.campus.outfit.service.MinioService;
 import com.campus.outfit.util.DoubaoUtil;
 import com.campus.outfit.util.SeedreamUtil;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
@@ -16,8 +19,8 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
-import java.util.Base64;
 import java.util.List;
+import java.util.stream.Collectors;
 
 /**
  * AI 穿搭助手服务实现类
@@ -29,7 +32,9 @@ public class AiAssistantServiceImpl implements AiAssistantService {
 
     private final DoubaoUtil doubaoUtil;
     private final SeedreamUtil seedreamUtil;
+    private final MinioService minioService;
     private final WardrobeItemMapper wardrobeItemMapper;
+    private final AiAnalysisRecordMapper aiAnalysisRecordMapper;
     private final ObjectMapper objectMapper;
 
     @Override
@@ -66,8 +71,8 @@ public class AiAssistantServiceImpl implements AiAssistantService {
                 fusionBase64List.add(mainBase64);
             }
 
-            // 2. 遍历建议单品，从用户衣柜寻找匹配的真实物品
-            org.springframework.web.client.RestTemplate restTemplate = new org.springframework.web.client.RestTemplate();
+            // 2. 遍历建议单品，从用户衣柜寻找匹配的真实物品 (Seedream V2 通常仅支持 1个模特+1个服装)
+            List<Long> matchedItemIds = new ArrayList<>();
             for (JsonNode rec : recommendations) {
                 String itemName = rec.path("title").asText();
                 if (itemName == null || itemName.isEmpty()) continue;
@@ -85,12 +90,16 @@ public class AiAssistantServiceImpl implements AiAssistantService {
                     WardrobeItem item = localItems.get(0);
                     log.info("[AiAssistant] 发现匹配单品: {} (ID: {})", itemName, item.getId());
                     
-                    try {
-                        // 下载图片并转为 Base64
-                        byte[] itemBytes = restTemplate.getForObject(item.getOriginalImageUrl(), byte[].class);
+                    try (java.io.InputStream is = java.net.URI.create(item.getOriginalImageUrl()).toURL().openStream()) {
+                        byte[] itemBytes = is.readAllBytes();
                         if (itemBytes != null) {
-                            String itemBase64 = Base64.getEncoder().encodeToString(itemBytes);
+                            String itemBase64 = java.util.Base64.getEncoder().encodeToString(itemBytes);
                             fusionBase64List.add(itemBase64);
+                            matchedItemIds.add(item.getId());
+                            
+                            // 关键：dressing_diffusionV2 常用模式为 [模特图, 服装图]
+                            // 如果已经凑够了 2 张图，则停止，防止多图导致 Input invalid 错误
+                            if (fusionBase64List.size() >= 2) break;
                         }
                     } catch (Exception e) {
                         log.warn("[AiAssistant] 提取衣柜单品 (ID: {}) 的图片失败: {}", item.getId(), e.getMessage());
@@ -98,19 +107,40 @@ public class AiAssistantServiceImpl implements AiAssistantService {
                 }
             }
 
-            // 3. 调用 Seedream 生成效果图
+            // 3. 调用 Seedream 生成效果图并转存 MinIO
             if (fusionBase64List.size() >= 1) {
                 try {
                     log.info("[AiAssistant] 正在调用 Seedream 生成效果图，输入图片张数: {}", fusionBase64List.size());
-                    String resultUrl = seedreamUtil.generateImageFromMultipleBase64(fusionBase64List);
+                    String tempResultUrl = seedreamUtil.generateImageFromMultipleBase64(fusionBase64List);
                     
-                    // 将生成的图片 URL 回填到 JSON 中的 image 字段
-                    root.put("image", resultUrl);
+                    // 将临时结果转传至 MinIO 持久化存储
+                    String objectName = minioService.uploadImageFromUrl(tempResultUrl);
+                    String permanentUrl = minioService.getImageUrl(objectName);
+                    log.info("[AiAssistant] 效果图已永久存储至 MinIO: {}", permanentUrl);
+
+                    // 4. 保存分析记录至数据库 (参考衣柜记录汇总)
+                    AiAnalysisRecord record = new AiAnalysisRecord();
+                    record.setUserId(userId);
+                    record.setStyleName(root.path("style_name").asText("未定义风格"));
+                    
+                    // 存储匹配到的单品 ID 列表为 JSON 字符串
+                    String itemIdsJson = matchedItemIds.stream()
+                            .map(String::valueOf)
+                            .collect(Collectors.joining(",", "[", "]"));
+                    record.setItemIds(itemIdsJson);
+
+                    record.setResultImageUrl(permanentUrl);
+                    record.setRawResultJson(root.toString());
+                    aiAnalysisRecordMapper.insert(record);
+                    log.info("[AiAssistant] 已保存 AI 穿搭分析记录, ID: {}", record.getId());
+
+                    // 将永久 URL 回填到 JSON 结果中
+                    root.put("image", permanentUrl);
                     if (recommendations.size() > 0) {
-                        ((ObjectNode) recommendations.get(0)).put("image", resultUrl);
+                        ((ObjectNode) recommendations.get(0)).put("image", permanentUrl);
                     }
                 } catch (Exception e) {
-                    log.error("[AiAssistant] Seedream 生图失败: {}", e.getMessage());
+                    log.error("[AiAssistant] Seedream 生图或持久化失败: {}", e.getMessage(), e);
                 }
             }
 

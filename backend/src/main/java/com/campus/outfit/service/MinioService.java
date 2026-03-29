@@ -67,6 +67,32 @@ public class MinioService {
      * @param file 图片文件
      * @return 所存图片的文件名标识
      */
+    /**
+     * 从 URL 下载图片并上传至 MinIO
+     * 
+     * @param imageUrl 图片 URL
+     * @return 所存图片的文件名标识
+     */
+    public String uploadImageFromUrl(String imageUrl) throws Exception {
+        log.info("[MinIO] 正在从 URL 下载并上传图片: {}", imageUrl);
+        try (InputStream inputStream = java.net.URI.create(imageUrl).toURL().openStream()) {
+            // 先尝试读取所有字节以确定大小，或者直接流式上传（但需要 content-length）
+            byte[] bytes = inputStream.readAllBytes();
+            String objectName = UUID.randomUUID().toString().replaceAll("-", "") + ".jpg";
+            
+            try (java.io.ByteArrayInputStream bais = new java.io.ByteArrayInputStream(bytes)) {
+                minioClient.putObject(
+                        PutObjectArgs.builder()
+                                .bucket(bucketName)
+                                .object(objectName)
+                                .stream(bais, bytes.length, -1)
+                                .contentType("image/jpeg")
+                                .build());
+            }
+            return objectName;
+        }
+    }
+
     public String uploadImage(MultipartFile file) throws Exception {
         String originalFilename = file.getOriginalFilename();
         String extension = originalFilename != null ? originalFilename.substring(originalFilename.lastIndexOf("."))

@@ -7,7 +7,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
-import org.springframework.http.client.SimpleClientHttpRequestFactory;
+import org.springframework.http.client.OkHttp3ClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestTemplate;
 
@@ -31,10 +31,10 @@ public class SeedreamUtil {
 
     public SeedreamUtil(ObjectMapper objectMapper) {
         this.objectMapper = objectMapper;
-        // 配置具有 60 秒超时时间的 RestTemplate
-        SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
-        factory.setConnectTimeout(10000); // 10秒连接超时
-        factory.setReadTimeout(60000);    // 60秒读取超时
+        // 使用 OkHttp3 引擎以支持更稳定的长连接管理，并配置 180s 超时时间
+        OkHttp3ClientHttpRequestFactory factory = new OkHttp3ClientHttpRequestFactory();
+        factory.setConnectTimeout(10000); // 10秒连接超时 (ms)
+        factory.setReadTimeout(180000);  // 180秒读取超时 (ms)
         this.restTemplate = new RestTemplate(factory);
     }
 
@@ -44,13 +44,25 @@ public class SeedreamUtil {
      * @return 生成的网络图片 URL
      */
     public String generateImageFromMultipleBase64(List<String> base64Images) {
-        log.info("[SeedreamUtil] 开始多图融合生图请求, endpoint: {}, 包含图片张数: {}", endpointId, base64Images.size());
+        return generateImage("基于以下图片进行穿搭融合和生图，保持风格协调", base64Images);
+    }
+
+    /**
+     * 核心生图方法：支持自定义提示词和参考图
+     * @param prompt 提示语
+     * @param base64Images 参考图片列表 (可为空，即文生图模式)
+     * @return 生成的网络图片 URL
+     */
+    public String generateImage(String prompt, List<String> base64Images) {
+        log.info("[SeedreamUtil] 开始生图请求, endpoint: {}, 包含参考图: {}", endpointId, (base64Images != null ? base64Images.size() : 0));
 
         try {
             // 1. 准备并格式化参考图片
             List<String> formattedBase64List = new ArrayList<>();
-            for (String raw : base64Images) {
-                formattedBase64List.add(resolveAndFormatImage(raw));
+            if (base64Images != null) {
+                for (String raw : base64Images) {
+                    formattedBase64List.add(resolveAndFormatImage(raw));
+                }
             }
 
             // 2. 构造 Ark 平台图像生成请求 Payload
@@ -59,15 +71,20 @@ public class SeedreamUtil {
             HttpHeaders headers = new HttpHeaders();
             headers.setContentType(MediaType.APPLICATION_JSON);
             headers.setBearerAuth(doubaoKey);
+            // 显式设置 Connection 为 close，防止因长连接空闲过期导致的重置错误
+            headers.set("Connection", "close");
 
             Map<String, Object> requestBody = new HashMap<>();
             requestBody.put("model", endpointId);
-            requestBody.put("prompt", "基于以下图片进行穿搭融合和生图，保持风格协调");
-            // Seedream 4.5/5.0 常用参考图字段为 reference_images
-            requestBody.put("reference_images", formattedBase64List);
+            requestBody.put("prompt", prompt != null ? prompt : "基于参考图进行穿搭设计");
+            
+            // 如果有参考图，则放入 reference_images
+            if (!formattedBase64List.isEmpty()) {
+                requestBody.put("reference_images", formattedBase64List);
+            }
             requestBody.put("response_format", "url");
 
-            log.info("[SeedreamUtil] 正在向豆包接口发起 POST 请求...");
+            log.info("[SeedreamUtil] 正在向豆包接口发起 POST 请求, Prompt: {}", requestBody.get("prompt"));
             HttpEntity<Map<String, Object>> entity = new HttpEntity<>(requestBody, headers);
             
             // 发送请求

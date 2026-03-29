@@ -50,8 +50,18 @@ public class AiAssistantServiceImpl implements AiAssistantService {
     @Override
     public String chat(String sessionId, String message, Long userId) {
         log.info("[AiAssistant] 执行穿搭对话, userId: {}, sessionId: {}", userId, sessionId);
-        String aiJson = doubaoUtil.chat(userId, sessionId, message);
-        return enhanceJsonWithImage(aiJson, null, userId);
+        String aiReply = doubaoUtil.chat(userId, sessionId, message);
+        
+        // 关键逻辑：探测 AI 回复是否为结构化 JSON (针对特定追问场景)
+        if (aiReply != null && aiReply.trim().startsWith("{") && aiReply.contains("\"recommendations\"")) {
+            try {
+                log.info("[AiAssistant] 检测到对话中包含穿搭建议 JSON，触发生图拦截器...");
+                return enhanceJsonWithImage(aiReply, null, userId);
+            } catch (Exception e) {
+                log.error("[AiAssistant] 多轮对话生图增强失败，回退为原始回复: {}", e.getMessage());
+            }
+        }
+        return aiReply;
     }
 
     /**
@@ -69,11 +79,27 @@ public class AiAssistantServiceImpl implements AiAssistantService {
 
             ArrayNode recommendations = (ArrayNode) root.get("recommendations");
             List<String> fusionBase64List = new ArrayList<>();
+            
+            // 2. 图像上下文检索：如果当前调用没有主图 base64，尝试从历史记录中找回该用户的最后一张底图作为参考
             if (mainBase64 != null) {
                 fusionBase64List.add(mainBase64);
+            } else {
+                List<AiAnalysisRecord> history = aiAnalysisRecordMapper.selectList(
+                        new LambdaQueryWrapper<AiAnalysisRecord>()
+                                .eq(AiAnalysisRecord::getUserId, userId)
+                                .orderByDesc(AiAnalysisRecord::getCreateTime)
+                                .last("LIMIT 1")
+                );
+                if (!history.isEmpty()) {
+                    String lastImageUrl = history.get(0).getResultImageUrl();
+                    if (lastImageUrl != null && !lastImageUrl.isEmpty()) {
+                        log.info("[AiAssistant] 多轮对话中检索到历史底图，以此作为生图参考: {}", lastImageUrl);
+                        fusionBase64List.add(lastImageUrl);
+                    }
+                }
             }
 
-            // 2. 遍历建议单品，从用户衣柜寻找匹配的真实物品 (Seedream V2 通常仅支持 1个模特+1个服装)
+            // 3. 遍历建议单品，从用户衣柜寻找匹配的真实物品 (Seedream V2 常用模式为 [模特图, 服装图])
             List<Long> matchedItemIds = new ArrayList<>();
             for (JsonNode rec : recommendations) {
                 String itemName = rec.path("title").asText();
@@ -109,11 +135,12 @@ public class AiAssistantServiceImpl implements AiAssistantService {
                 }
             }
 
-            // 3. 调用 Seedream 生成效果图并转存 MinIO
+            // 4. 调用 Seedream 生成效果图并转存 MinIO
             if (fusionBase64List.size() >= 1) {
                 try {
-                    log.info("[AiAssistant] 正在调用 Seedream 生成效果图，输入图片张数: {}", fusionBase64List.size());
-                    String tempResultUrl = seedreamUtil.generateImageFromMultipleBase64(fusionBase64List);
+                    String promptText = root.path("style_name").asText("基于参考图进行穿搭设计");
+                    log.info("[AiAssistant] 正在调用 Seedream 生成效果图, Prompt: {}, 参考图片张数: {}", promptText, fusionBase64List.size());
+                    String tempResultUrl = seedreamUtil.generateImage(promptText, fusionBase64List);
                     
                     // 将临时结果转传至 MinIO 持久化存储
                     String objectName = minioService.uploadImageFromUrl(tempResultUrl);

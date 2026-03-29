@@ -40,7 +40,9 @@ public class AiAssistantServiceImpl implements AiAssistantService {
     @Override
     public String analyze(String base64Image, String sessionId, Long userId) {
         log.info("[AiAssistant] 执行穿搭分析, userId: {}, sessionId: {}", userId, sessionId);
-        String prompt = "请分析这张穿搭主图，并从我的衣柜中挑选单品给出搭配建议。";
+        // 提示词加强：显式定义 JSON 格式并加入【1个对象】的物理约束
+        String prompt = "请分析这张穿搭主图，并从我的衣柜中挑选单品给出搭配建议。返回 JSON 格式结果，包含字段：style (整体风格), suggestions (建议列表), recommendations (单品列表，内部项含 title, desc)。" +
+                       "【重要约束】必须且只能推荐 1 套最核心的穿搭搭配，recommendations 数组里面只能包含 1 个对象，严禁返回多个。";
         String aiJson = doubaoUtil.chat(userId, sessionId, prompt, base64Image);
         return enhanceJsonWithImage(aiJson, base64Image, userId);
     }
@@ -138,6 +140,10 @@ public class AiAssistantServiceImpl implements AiAssistantService {
                     root.put("image", permanentUrl);
                     if (recommendations.size() > 0) {
                         ((ObjectNode) recommendations.get(0)).put("image", permanentUrl);
+                        // 增加防御性截断：严格锁死只返回 1 个推荐，防止模型返回多项
+                        while (recommendations.size() > 1) {
+                            recommendations.remove(1);
+                        }
                     }
                 } catch (Exception e) {
                     log.error("[AiAssistant] Seedream 生图或持久化失败: {}", e.getMessage(), e);

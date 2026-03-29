@@ -26,6 +26,10 @@ const wardrobeVisible = ref(false)
 const wardrobeItems = ref<any[]>([])
 const wardrobeLoading = ref(false)
 
+// 自定义图片预览 (解耦方案)
+const showViewer = ref(false)
+const previewUrlList = ref<string[]>([])
+
 const openAssistant = () => {
   visible.value = true
   if (!sessionId.value) {
@@ -196,6 +200,15 @@ const insertImageReferenceToInput = (title: string, imageUrl: string) => {
     if (input) input.focus()
   })
 }
+
+const openCustomViewer = (url: string) => {
+  previewUrlList.value = [url]
+  showViewer.value = true
+}
+
+const closeViewer = () => {
+  showViewer.value = false
+}
 </script>
 
 <template>
@@ -231,8 +244,8 @@ const insertImageReferenceToInput = (title: string, imageUrl: string) => {
               </div>
 
               <!-- 图片内容 -->
-              <div v-else-if="msg.type === 'image'" class="rounded-lg overflow-hidden border-2 border-white/20">
-                <el-image :src="msg.content" class="max-w-[200px] block" :preview-src-list="[msg.content]" />
+              <div v-else-if="msg.type === 'image'" class="rounded-lg overflow-hidden border-2 border-white/20 cursor-pointer" @click="openCustomViewer(msg.content)">
+                <el-image :src="msg.content" class="max-w-[200px] block" />
               </div>
 
               <!-- 复杂的分析报告 -->
@@ -259,12 +272,10 @@ const insertImageReferenceToInput = (title: string, imageUrl: string) => {
                   <div class="text-xs uppercase font-black text-muted-foreground tracking-tighter">推荐搭配 / Recommendations</div>
                   <div class="grid grid-cols-1 gap-4">
                     <div v-for="item in msg.data.recommendations" :key="item.id" class="bg-white/50 dark:bg-black/20 rounded-xl overflow-hidden border border-border/50 p-2 flex gap-3 group/item">
-                      <div class="w-20 h-28 rounded-lg overflow-hidden bg-secondary/30 shrink-0 border border-white/20 relative group/img cursor-pointer">
+                      <div class="w-20 h-28 rounded-lg overflow-hidden bg-secondary/30 shrink-0 border border-white/20 relative group/img cursor-pointer" @click="openCustomViewer(item.image)">
                         <el-image 
                           :src="item.image" 
                           class="w-full h-full object-cover group-hover/item:scale-105 transition-transform duration-500" 
-                          :preview-src-list="[item.image]" 
-                          :preview-teleported="true"
                           hide-on-click-modal 
                           style="transform: translateZ(0); will-change: transform; backface-visibility: hidden;" 
                         />
@@ -332,6 +343,13 @@ const insertImageReferenceToInput = (title: string, imageUrl: string) => {
           </div>
         </div>
       </div>
+      <!-- 自定义图片预览器 (受控渲染，防止重排闪烁) -->
+      <el-image-viewer
+        v-if="showViewer"
+        :url-list="previewUrlList"
+        :teleported="true"
+        @close="closeViewer"
+      />
     </el-drawer>
 
     <!-- 衣柜选取单品弹窗 -->

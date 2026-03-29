@@ -156,6 +156,24 @@ const sendMessage = async () => {
       sessionId: sessionId.value
     })
     
+    // 智能解析逻辑：尝试将响应解析为结构化搭配方案
+    try {
+      const parsedData = typeof reply === 'string' ? JSON.parse(reply) : reply
+      // 校验穿搭方案架构：包含风格且推荐列表为数组
+      if (parsedData && parsedData.style && Array.isArray(parsedData.recommendations)) {
+        messages.value.push({
+          role: 'assistant',
+          content: '已为你生成专属于你的穿搭实验室报告：',
+          type: 'analysis',
+          data: parsedData
+        })
+        return // 解析成功并推送后退出逻辑
+      }
+    } catch (parseError) {
+      // 解析失败说明是普通对话文本，进入下方的默认逻辑
+    }
+
+    // 默认回退：作为普通文本消息展示
     messages.value.push({
       role: 'assistant',
       content: reply,
@@ -232,7 +250,7 @@ const sendMessage = async () => {
                   <div class="grid grid-cols-1 gap-4">
                     <div v-for="item in msg.data.recommendations" :key="item.id" class="bg-white/50 dark:bg-black/20 rounded-xl overflow-hidden border border-border/50 p-2 flex gap-3 group/item">
                       <div class="w-20 h-28 rounded-lg overflow-hidden bg-secondary/30 shrink-0 border border-white/20">
-                        <el-image :src="item.image" class="w-full h-full object-cover group-hover/item:scale-110 transition-transform duration-500" :preview-src-list="[item.image]" hide-on-click-modal />
+                        <el-image :src="item.image" class="w-full h-full object-cover group-hover/item:scale-110 transition-transform duration-500" :preview-src-list="[item.image]" hide-on-click-modal style="transform: translateZ(0); will-change: transform; backface-visibility: hidden;" />
                       </div>
                       <div class="flex-1 flex flex-col justify-center gap-1">
                         <div class="text-xs font-bold text-primary">{{ item.title }}</div>

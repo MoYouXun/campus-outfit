@@ -107,3 +107,12 @@
     margin-bottom: 1.5rem;
   }
 }
+
+/* 强行锁定 html 滚动条轨道，防止重排闪烁 (基础设施级修复) */
+html {
+  overflow-y: scroll !important;
+}
+/* 覆盖 Element Plus 预览时给 body 添加的 padding-right，防止内容抖动 */
+body {
+  padding-right: 0 !important;
+}

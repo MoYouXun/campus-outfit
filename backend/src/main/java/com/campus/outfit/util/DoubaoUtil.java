@@ -6,13 +6,13 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
+import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestTemplate;
 
@@ -24,13 +24,12 @@ import java.util.concurrent.TimeUnit;
  */
 @Slf4j
 @Component
-@RequiredArgsConstructor
 public class DoubaoUtil {
 
     private final StringRedisTemplate redisTemplate;
     private final WardrobeItemMapper wardrobeItemMapper;
     private final ObjectMapper objectMapper;
-    private final RestTemplate restTemplate = new RestTemplate();
+    private final RestTemplate restTemplate;
 
     @Value("${api.doubao.key}")
     private String doubaoKey;
@@ -40,6 +39,24 @@ public class DoubaoUtil {
 
     private static final String CONTEXT_KEY_PREFIX = "ai:context:";
     private static final long EXPIRE_HOURS = 2;
+
+    /**
+     * 手动构造函数：初始化并配置具有 120s 超时保护的 RestTemplate
+     */
+    public DoubaoUtil(StringRedisTemplate redisTemplate, WardrobeItemMapper wardrobeItemMapper, ObjectMapper objectMapper) {
+        this.redisTemplate = redisTemplate;
+        this.wardrobeItemMapper = wardrobeItemMapper;
+        this.objectMapper = objectMapper;
+        
+        // 创建带有超时配置的请求工厂
+        SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
+        factory.setConnectTimeout(10000); // 10秒连接超时
+        // 这里配置 120s 超时是为了防止大模型长文本生成造成的 Socket EOF 断联
+        factory.setReadTimeout(120000);    // 120秒读取超时
+        
+        this.restTemplate = new RestTemplate(factory);
+        log.info("[DoubaoUtil] RestTemplate 初始化完成，读取超时设置为 120s");
+    }
 
     /**
      * 与 AI 进行对话，结合用户衣柜数据

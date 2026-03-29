@@ -107,7 +107,7 @@ public class DoubaoUtil {
                 Map<String, Object> imgPart = new HashMap<>();
                 imgPart.put("type", "image_url");
                 Map<String, String> urlMap = new HashMap<>();
-                urlMap.put("url", formatBase64Url(base64Image));
+                urlMap.put("url", resolveAndFormatImage(base64Image));
                 imgPart.put("image_url", urlMap);
                 contentList.add(imgPart);
                 
@@ -142,13 +142,34 @@ public class DoubaoUtil {
         }
     }
 
-    private String formatBase64Url(String base64) {
-        if (base64 == null || base64.isEmpty()) return "";
-        // 如果已经自带了 data:image/ 前缀，直接返回原串；否则拼接默认的 jpeg 前缀
-        if (base64.startsWith("data:image/")) {
-            return base64;
+    private String resolveAndFormatImage(String imageSource) {
+        if (imageSource == null || imageSource.isEmpty()) {
+            return "";
         }
-        return "data:image/jpeg;base64," + base64;
+        
+        // 1. 如果是 HTTP/HTTPS 链接，先下载图片再转 Base64
+        if (imageSource.startsWith("http://") || imageSource.startsWith("https://")) {
+            try {
+                // 使用内部定义的 restTemplate 或新建一个
+                byte[] imageBytes = restTemplate.getForObject(imageSource, byte[].class);
+                if (imageBytes != null) {
+                    String base64 = java.util.Base64.getEncoder().encodeToString(imageBytes);
+                    return "data:image/jpeg;base64," + base64;
+                }
+            } catch (Exception e) {
+                log.error("AI 助手下载图片流失败, URL: {}", imageSource, e);
+                throw new RuntimeException("读取图片进行 Base64 编码失败");
+            }
+        }
+        
+        // 2. 如果本身就是 Base64 字符串，清洗多余前缀
+        String cleanBase64 = imageSource.replaceAll("(?i)^data:image/[^;]+;base64,", "");
+        while (cleanBase64.toLowerCase().startsWith("data:image/")) {
+            cleanBase64 = cleanBase64.replaceAll("(?i)^data:image/[^;]+;base64,", "");
+        }
+        cleanBase64 = cleanBase64.replaceAll("[\\r\\n\\s]", "");
+        
+        return "data:image/jpeg;base64," + cleanBase64;
     }
 
     private String callDoubaoApi(List<Map<String, Object>> messages) throws Exception {

@@ -2,6 +2,7 @@ package com.campus.outfit.util;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.springframework.web.client.RestTemplate;
 import com.volcengine.service.visual.IVisualService;
 import com.volcengine.service.visual.impl.VisualServiceImpl;
 import jakarta.annotation.PostConstruct;
@@ -54,7 +55,7 @@ public class SeedreamUtil {
             // 处理 Base64 前缀
             List<String> pureBase64List = new ArrayList<>();
             for (String rawBase64 : base64Images) {
-                String base64 = formatBase64Url(rawBase64);
+                String base64 = resolveAndFormatImage(rawBase64);
                 if (base64.startsWith("data:")) {
                     int commaIndex = base64.indexOf(",");
                     if (commaIndex != -1) {
@@ -118,12 +119,34 @@ public class SeedreamUtil {
         }
     }
 
-    private String formatBase64Url(String base64) {
-        if (base64 == null || base64.isEmpty()) return "";
-        // 如果已经自带了 data:image/ 前缀，直接返回原串；否则拼接默认的 jpeg 前缀
-        if (base64.startsWith("data:image/")) {
-            return base64;
+    private final RestTemplate restTemplate = new RestTemplate();
+
+    private String resolveAndFormatImage(String imageSource) {
+        if (imageSource == null || imageSource.isEmpty()) {
+            return "";
         }
-        return "data:image/jpeg;base64," + base64;
+        
+        // 1. 如果是 HTTP/HTTPS 链接，先下载图片再转 Base64
+        if (imageSource.startsWith("http://") || imageSource.startsWith("https://")) {
+            try {
+                byte[] imageBytes = restTemplate.getForObject(imageSource, byte[].class);
+                if (imageBytes != null) {
+                    String base64 = java.util.Base64.getEncoder().encodeToString(imageBytes);
+                    return "data:image/jpeg;base64," + base64;
+                }
+            } catch (Exception e) {
+                log.error("AI 助手下载图片流失败, URL: {}", imageSource, e);
+                throw new RuntimeException("读取图片进行 Base64 编码失败");
+            }
+        }
+        
+        // 2. 如果本身就是 Base64 字符串，清洗多余前缀
+        String cleanBase64 = imageSource.replaceAll("(?i)^data:image/[^;]+;base64,", "");
+        while (cleanBase64.toLowerCase().startsWith("data:image/")) {
+            cleanBase64 = cleanBase64.replaceAll("(?i)^data:image/[^;]+;base64,", "");
+        }
+        cleanBase64 = cleanBase64.replaceAll("[\\r\\n\\s]", "");
+        
+        return "data:image/jpeg;base64," + cleanBase64;
     }
 }

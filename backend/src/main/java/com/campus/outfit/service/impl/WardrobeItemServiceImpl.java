@@ -120,6 +120,27 @@ public class WardrobeItemServiceImpl extends ServiceImpl<WardrobeItemMapper, War
     }
 
     @Override
+    public List<WardrobeItem> uploadBatch(MultipartFile[] files, Long userId) {
+        log.info("[Wardrobe] 用户 {} 发起批量上传单品任务，总计: {} 张", userId, files.length);
+        List<WardrobeItem> results = new java.util.ArrayList<>();
+        
+        for (MultipartFile file : files) {
+            try {
+                // 复用单张上传的逻辑，包含存储、AI 分析、审核和持久化
+                WardrobeItem item = uploadAndAnalyzeItem(file, userId);
+                results.add(item);
+            } catch (Exception e) {
+                // 核心需求：捕获单张图片的所有异常（包含 AI 鉴定拒绝、底图错误等），跳过并继续
+                log.warn("[Wardrobe] 批量任务中单张图片处理失败, 忽略并继续: {}, 原因: {}", 
+                        file.getOriginalFilename(), e.getMessage());
+            }
+        }
+        
+        log.info("[Wardrobe] 批量处理完成，成功上传: {}/{}", results.size(), files.length);
+        return results;
+    }
+
+    @Override
     public boolean deleteWardrobeItem(Long id, Long userId) {
         // 先查询单品，验证所属权
         WardrobeItem item = this.getById(id);

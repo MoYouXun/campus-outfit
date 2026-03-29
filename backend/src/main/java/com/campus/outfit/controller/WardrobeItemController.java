@@ -37,6 +37,16 @@ public class WardrobeItemController {
     }
 
     /**
+     * 批量上传并分析单品
+     */
+    @PostMapping("/batch-upload")
+    public Result<java.util.List<WardrobeItem>> batchUpload(@RequestParam("files") MultipartFile[] files, 
+                                                              @RequestHeader("Authorization") String token) {
+        Long userId = jwtUtils.getUserIdFromToken(token.replace("Bearer ", ""));
+        return Result.success(wardrobeItemService.uploadBatch(files, userId));
+    }
+
+    /**
      * 获取用户所有衣柜单品
      */
     @GetMapping("/list")

@@ -37,6 +37,14 @@ public interface WardrobeItemService extends IService<WardrobeItem> {
     java.util.List<WardrobeItem> getWardrobeByStyle(Long userId, String style);
 
     /**
+     * 批量上传并分析单品
+     * @param files 图片文件列表
+     * @param userId 所属用户ID
+     * @return 成功上传的单品列表
+     */
+    java.util.List<WardrobeItem> uploadBatch(org.springframework.web.multipart.MultipartFile[] files, Long userId);
+
+    /**
      * 删除衣柜单品（带权校验）
      */
     boolean deleteWardrobeItem(Long id, Long userId);

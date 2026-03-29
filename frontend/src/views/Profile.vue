@@ -24,6 +24,7 @@ const isUploading = ref(false)
 const isFollowing = ref(false)
 const userStore = useUserStore()
 const isCurrentUser = ref(false)
+const fileInputRef = ref<HTMLInputElement | null>(null)
 const currentUserId = computed(() => userStore.userInfo?.id || userStore.userInfo?.userId || null)
 const activeTab = ref('public')
 
@@ -315,7 +316,7 @@ onMounted(loadUser)
                   class="hidden"
                   @change="handleWardrobeBatchUpload"
                 />
-                <el-button type="primary" :icon="Plus" round @click="() => ( $refs.fileInputRef as HTMLInputElement ).click()">
+                <el-button type="primary" :icon="Plus" round @click="() => fileInputRef?.click()">
                   批量上传单品
                 </el-button>
               </div>
@@ -325,13 +326,14 @@ onMounted(loadUser)
               </div>
 
               <div v-else class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-6">
-                <div v-for="item in wardrobeItems" :key="item.id" class="group relative bg-card rounded-2xl overflow-hidden border border-border/50 shadow-sm transition-all hover:shadow-lg hover:-translate-y-1">
+                <div v-for="item in wardrobeItems" :key="item.id" class="group relative bg-card rounded-2xl overflow-hidden border border-border/50 shadow-sm transition-all hover:shadow-lg">
                   <!-- 单品图片预览 -->
                   <div class="aspect-[3/4] overflow-hidden bg-secondary/20">
                     <el-image 
                       :src="item.originalImageUrl" 
                       class="w-full h-full object-cover transition-transform group-hover:scale-110"
                       :preview-src-list="[item.originalImageUrl]"
+                      :preview-teleported="true"
                       hide-on-click-modal
                     />
                   </div>
@@ -340,8 +342,13 @@ onMounted(loadUser)
                   <div class="p-3 bg-white/90 backdrop-blur-md absolute bottom-0 left-0 right-0 transform translate-y-full group-hover:translate-y-0 transition-transform duration-300">
                     <div class="flex justify-between items-center">
                       <div class="overflow-hidden">
-                        <div class="text-xs font-bold text-primary truncate">{{ item.categoryMain || '未分类' }}</div>
-                        <div class="text-[10px] text-muted-foreground truncate">{{ item.season || '四季' }}</div>
+                        <div class="text-xs font-bold text-primary truncate">
+                          {{ item.categoryMain || '未分类' }} · {{ item.categorySub || '未知' }}
+                        </div>
+                        <div class="text-[10px] text-muted-foreground truncate mt-1 flex gap-2">
+                          <span>🎨 {{ item.color || '未知' }}</span>
+                          <span>📅 {{ item.season || '四季' }}</span>
+                        </div>
                       </div>
                       <el-button 
                         type="danger" 

@@ -14,3 +14,18 @@ export function getImageUrl(objectName: string) {
     }
   })
 }
+
+/**
+ * 上传试穿人像底图并进行 AI 预审
+ * @param file 人像照片
+ */
+export async function uploadPortrait(file: File | Blob) {
+  const formData = new FormData()
+  formData.append('file', file)
+  
+  return request.post('/image/upload-portrait', formData, {
+    headers: {
+      'Content-Type': 'multipart/form-data'
+    }
+  })
+}

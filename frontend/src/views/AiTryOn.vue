@@ -2,7 +2,8 @@
 import { ref, computed } from 'vue'
 import { Plus, MagicStick, Loading as IconLoading, Refresh, Close, Check } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
-import { uploadWardrobeItem, getWardrobeList } from '@/api/wardrobe'
+import { getWardrobeList } from '@/api/wardrobe'
+import { uploadPortrait } from '@/api/image'
 import { aiTryOn } from '@/api/ai'
 
 // 响应式状态
@@ -26,9 +27,9 @@ const selectionType = ref<'upper' | 'lower'>('upper')
 const handleHumanUpload = async (options: any) => {
   humanUploading.value = true
   try {
-    const res: any = await uploadWardrobeItem(options.file)
-    humanImageUrl.value = res.originalImageUrl
-    ElMessage.success('人像图片上传成功')
+    const res: any = await uploadPortrait(options.file)
+    humanImageUrl.value = res.url
+    ElMessage.success('人像图片预核通过，上传成功')
   } catch (e: any) {
     ElMessage.error('人像上传失败：' + (e.message || '未知错误'))
   } finally {

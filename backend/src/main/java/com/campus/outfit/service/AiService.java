@@ -13,13 +13,20 @@ public interface AiService {
     AiAnalysisResult analyzeOutfit(byte[] imageBytes);
 
     /**
+     * 为虚拟试衣审计人像底图
+     * @param base64Image 人像图 Base64
+     * @return 审核结论 JSON 字符串 (包含 isSuitable 和 reason)
+     */
+    String analyzePortraitForTryOn(String base64Image);
+
+    /**
      * 生成 AI 换装后的图片
      * @param humanImageUrl 人像图Url
      * @param upperGarmentUrl 上衣图Url
      * @param lowerGarmentUrl 裤子图Url
      * @return 生成的图片Base64或链接
      */
-    String generateTryOnImage(String humanImageUrl, String upperGarmentUrl, String lowerGarmentUrl);
+    String generateTryOnImage(String personImageUrl, String upperGarmentUrl, String lowerGarmentUrl);
 
     /**
      * 使用衣柜上下文分析穿搭图片（支持多模态与多轮对话）

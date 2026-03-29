@@ -7,8 +7,9 @@ import { likeOutfit, unlikeOutfit, favoriteOutfit, unfavoriteOutfit } from '@/ap
 import MasonryGallery from '@/components/MasonryGallery.vue'
 import { useUserStore } from '@/stores/user'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { MagicStick, Refresh } from '@element-plus/icons-vue'
+import { MagicStick, Refresh, Plus, Delete } from '@element-plus/icons-vue'
 import { aiTryOn } from '@/api/ai'
+import { getWardrobeList, uploadWardrobeItem, deleteWardrobeItem } from '@/api/wardrobe'
 import UploadImage from '@/components/UploadImage.vue'
 
 const route = useRoute()
@@ -17,11 +18,58 @@ const user = ref<any>(null)
 const outfits = ref<any[]>([]) // 公开列表
 const privateOutfits = ref<any[]>([]) // 私人衣橱
 const favoriteOutfits = ref<any[]>([]) // 我的收藏
+const wardrobeItems = ref<any[]>([]) // 我的衣柜
+const wardrobeLoading = ref(false)
 const isFollowing = ref(false)
 const userStore = useUserStore()
 const isCurrentUser = ref(false)
 const currentUserId = computed(() => userStore.userInfo?.id || userStore.userInfo?.userId || null)
 const activeTab = ref('public')
+
+const loadWardrobe = async () => {
+  if (!isCurrentUser.value) return
+  wardrobeLoading.value = true
+  try {
+    const res: any = await getWardrobeList()
+    wardrobeItems.value = res || []
+  } catch (e) {
+    console.error('获取衣柜失败', e)
+  } finally {
+    wardrobeLoading.value = false
+  }
+}
+
+const handleWardrobeUpload = async (file: File) => {
+  try {
+    wardrobeLoading.value = true
+    await uploadWardrobeItem(file)
+    ElMessage.success('单品上传成功')
+    loadWardrobe()
+  } catch (e: any) {
+    ElMessage.error(e.response?.data?.message || '上传失败')
+  } finally {
+    wardrobeLoading.value = false
+  }
+}
+
+const handleWardrobeDelete = async (id: number | string) => {
+  try {
+    await ElMessageBox.confirm('确定要从您的电子衣橱中永久移除此单品吗？', '确认删除', {
+      confirmButtonText: '确定',
+      cancelButtonText: '取消',
+      type: 'warning',
+      customClass: 'glass-message-box'
+    })
+    
+    await deleteWardrobeItem(id)
+    ElMessage.success('单品已移除')
+    loadWardrobe()
+  } catch (e: any) {
+    if (e !== 'cancel') {
+      ElMessage.error(e.response?.data?.message || '移除失败')
+    }
+  }
+}
 
 const loadUser = async () => {
   try {
@@ -38,6 +86,7 @@ const loadUser = async () => {
       privateOutfits.value = privateRes || []
       const favoriteRes: any = await getFavoriteOutfits()
       favoriteOutfits.value = favoriteRes || []
+      loadWardrobe() // 加载衣柜数据
     } else {
       outfitsRes = await getUserOutfits({ 
         userId: userId,
@@ -230,6 +279,67 @@ onMounted(loadUser)
           <el-tab-pane v-if="isCurrentUser" label="我的收藏" name="favorites">
             <div class="pt-2">
               <MasonryGallery :outfits="favoriteOutfits" @delete="handleDelete" @like="handleLike" @favorite="handleFavorite" :hideManagementButtons="true" />
+            </div>
+          </el-tab-pane>
+          <el-tab-pane v-if="isCurrentUser" label="我的衣柜" name="wardrobe">
+            <div class="pt-4" v-loading="wardrobeLoading">
+              <div class="flex justify-between items-center mb-6">
+                <div>
+                  <h3 class="text-lg font-bold flex items-center gap-2">
+                    <el-icon class="text-primary"><MagicStick /></el-icon>
+                    我的电子衣橱
+                    <span class="text-xs font-normal text-muted-foreground bg-secondary/50 px-2 py-0.5 rounded-full">
+                      {{ wardrobeItems.length }} 件单品
+                    </span>
+                  </h3>
+                </div>
+                <el-upload
+                  action="#"
+                  :show-file-list="false"
+                  :auto-upload="false"
+                  accept="image/*"
+                  :on-change="(file: any) => handleWardrobeUpload(file.raw)"
+                >
+                  <el-button type="primary" :icon="Plus" round>上传单品</el-button>
+                </el-upload>
+              </div>
+
+              <div v-if="wardrobeItems.length === 0" class="py-20 text-center bg-secondary/10 rounded-3xl border-2 border-dashed border-border/50">
+                <el-empty description="衣柜里空空如也，快去上传您的时尚单品吧！" />
+              </div>
+
+              <div v-else class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-6">
+                <div v-for="item in wardrobeItems" :key="item.id" class="group relative bg-card rounded-2xl overflow-hidden border border-border/50 shadow-sm transition-all hover:shadow-lg hover:-translate-y-1">
+                  <!-- 单品图片预览 -->
+                  <div class="aspect-[3/4] overflow-hidden bg-secondary/20">
+                    <el-image 
+                      :src="item.originalImageUrl" 
+                      class="w-full h-full object-cover transition-transform group-hover:scale-110"
+                      :preview-src-list="[item.originalImageUrl]"
+                      hide-on-click-modal
+                    />
+                  </div>
+                  
+                  <!-- 单品基本信息 -->
+                  <div class="p-3 bg-white/90 backdrop-blur-md absolute bottom-0 left-0 right-0 transform translate-y-full group-hover:translate-y-0 transition-transform duration-300">
+                    <div class="flex justify-between items-center">
+                      <div class="overflow-hidden">
+                        <div class="text-xs font-bold text-primary truncate">{{ item.categoryMain || '未分类' }}</div>
+                        <div class="text-[10px] text-muted-foreground truncate">{{ item.season || '四季' }}</div>
+                      </div>
+                      <el-button 
+                        type="danger" 
+                        :icon="Delete" 
+                        circle 
+                        size="small" 
+                        plain 
+                        @click="handleWardrobeDelete(item.id)"
+                        class="hover:scale-110 transition-transform"
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
             </div>
           </el-tab-pane>
         </el-tabs>

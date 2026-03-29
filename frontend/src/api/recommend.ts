@@ -47,4 +47,28 @@ export function getRecommendByStyle(params: StyleParams) {
   })
 }
 
+/**
+ * AI 穿搭分析
+ * @param data { base64Image: string, sessionId: string }
+ */
+export function aiAnalyze(data: { base64Image: string, sessionId: string }) {
+  return request({
+    url: '/recommend/ai-analyze',
+    method: 'post',
+    data
+  })
+}
+
+/**
+ * AI 智能聊天
+ * @param data { message: string, sessionId: string }
+ */
+export function aiChat(data: { message: string, sessionId: string }) {
+  return request({
+    url: '/recommend/ai-chat',
+    method: 'post',
+    data
+  })
+}
+
 

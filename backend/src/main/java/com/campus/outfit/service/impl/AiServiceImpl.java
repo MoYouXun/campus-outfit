@@ -23,8 +23,12 @@ import lombok.extern.slf4j.Slf4j;
 
 import java.util.Base64;
 import java.util.Arrays;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+import com.campus.outfit.entity.WardrobeItem;
 
 
 @Slf4j
@@ -46,6 +50,14 @@ public class AiServiceImpl implements AiService {
     private String volcSk;
 
     private IVisualService visualService;
+
+    @Value("${ai.ark.model-id:doubao-seedream-4-5-251128}")
+    private String imageModelId;
+
+    /**
+     * 对话上下文缓存，存储各会话的历史消息
+     */
+    private final Map<String, List<Map<String, Object>>> conversationContexts = new ConcurrentHashMap<>();
 
 
 
@@ -385,5 +397,182 @@ public class AiServiceImpl implements AiService {
         }
         
         return bytes;
+    }
+
+    @Override
+    public String analyzeOutfitWithWardrobe(String base64Image, Long userId, String sessionId, List<WardrobeItem> wardrobeItems) {
+        log.info("[AI Service] 开始基于衣柜上下文分析穿搭, sessionId: {}", sessionId);
+        String url = "https://ark.cn-beijing.volces.com/api/v3/chat/completions";
+
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_JSON);
+        headers.setBearerAuth(doubaoKey);
+
+        // 1. 系统提示词
+        Map<String, Object> systemMessage = new HashMap<>();
+        systemMessage.put("role", "system");
+        systemMessage.put("content", "你是一位专业的校园穿搭顾问。请根据用户提供的主图和衣柜单品图片库，返回一个严格格式为JSON的结果，包含以下字段：\n" +
+                "1. style (字符串): 整体穿搭风格关键词\n" +
+                "2. items (字符串列表): 识别出的主图中单品\n" +
+                "3. occasion (字符串): 建议穿着场合\n" +
+                "4. suggestions (字符串): 专业穿搭改进建议\n" +
+                "5. recommendations (对象列表): 从用户衣柜图片库中挑选的推荐搭配单品，每个对象包含 id 和 reason。\n" +
+                "你的回答必须是一个合法的JSON字符串，不要包含 Markdown 标记格式。数据中禁止包含任何违法违规描述。");
+
+        // 2. 构建多模态内容列表
+        List<Map<String, Object>> contentList = new ArrayList<>();
+        
+        Map<String, Object> textPart = new HashMap<>();
+        textPart.put("type", "text");
+        textPart.put("text", "这是我的穿搭主图。请结合我的衣柜单品（下方补充图片）给出分析及搭配建议。");
+        contentList.add(textPart);
+
+        // 主图
+        Map<String, Object> mainImagePart = new HashMap<>();
+        mainImagePart.put("type", "image_url");
+        Map<String, String> mainUrlMap = new HashMap<>();
+        mainUrlMap.put("url", "data:image/jpeg;base64," + base64Image);
+        mainImagePart.put("image_url", mainUrlMap);
+        contentList.add(mainImagePart);
+
+        // 衣柜图片
+        if (wardrobeItems != null && !wardrobeItems.isEmpty()) {
+            Map<String, Object> wardrobeTextPart = new HashMap<>();
+            wardrobeTextPart.put("type", "text");
+            wardrobeTextPart.put("text", "以下是我衣柜里的备选搭配单品：");
+            contentList.add(wardrobeTextPart);
+
+            for (WardrobeItem item : wardrobeItems) {
+                if (item.getOriginalImageUrl() != null && item.getOriginalImageUrl().startsWith("http")) {
+                    Map<String, Object> imgPart = new HashMap<>();
+                    imgPart.put("type", "image_url");
+                    Map<String, String> urlMap = new HashMap<>();
+                    urlMap.put("url", item.getOriginalImageUrl());
+                    imgPart.put("image_url", urlMap);
+                    contentList.add(imgPart);
+                    
+                    Map<String, Object> idPart = new HashMap<>();
+                    idPart.put("type", "text");
+                    idPart.put("text", "（单品 ID: " + item.getId() + "）");
+                    contentList.add(idPart);
+                }
+            }
+        }
+
+        Map<String, Object> userMessage = new HashMap<>();
+        userMessage.put("role", "user");
+        userMessage.put("content", contentList);
+
+        // 3. 构建请求
+        List<Map<String, Object>> messages = new ArrayList<>();
+        messages.add(systemMessage);
+        messages.add(userMessage);
+
+        Map<String, Object> requestBody = new HashMap<>();
+        requestBody.put("model", endpointId);
+        requestBody.put("messages", messages);
+
+        HttpEntity<Map<String, Object>> entity = new HttpEntity<>(requestBody, headers);
+
+        try {
+            String responseStr = restTemplate.postForObject(url, entity, String.class);
+            JsonNode root = objectMapper.readTree(responseStr);
+            String content = root.path("choices").path(0).path("message").path("content").asText();
+            
+            // 存储到会话上下文 (只保存最后一条助手回复和之前的系统/用户消息，简化存储)
+            List<Map<String, Object>> history = new ArrayList<>(messages);
+            Map<String, Object> assistantMsg = new HashMap<>();
+            assistantMsg.put("role", "assistant");
+            assistantMsg.put("content", content);
+            history.add(assistantMsg);
+            conversationContexts.put(sessionId, history);
+
+            return extractJson(content);
+        } catch (Exception e) {
+            log.error("衣柜上下文分析失败: {}", e.getMessage());
+            throw new RuntimeException("AI 分析服务异常", e);
+        }
+    }
+
+    @Override
+    public String chatWithWardrobeContext(String sessionId, String message, List<WardrobeItem> wardrobeItems) {
+        log.info("[AI Service] 衣柜聊天对话, sessionId: {}", sessionId);
+        String url = "https://ark.cn-beijing.volces.com/api/v3/chat/completions";
+
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_JSON);
+        headers.setBearerAuth(doubaoKey);
+
+        List<Map<String, Object>> history = conversationContexts.get(sessionId);
+        if (history == null) {
+            // 如果会话不存在，初始化一个空会话或简单的系统提示
+            history = new ArrayList<>();
+            Map<String, Object> systemMessage = new HashMap<>();
+            systemMessage.put("role", "system");
+            systemMessage.put("content", "你是一位专业的校园穿搭顾问。请基于之前的分析和用户的询问提供穿搭建议。");
+            history.add(systemMessage);
+        }
+
+        Map<String, Object> userMessage = new HashMap<>();
+        userMessage.put("role", "user");
+        userMessage.put("content", message);
+        history.add(userMessage);
+
+        Map<String, Object> requestBody = new HashMap<>();
+        requestBody.put("model", endpointId);
+        requestBody.put("messages", history);
+
+        HttpEntity<Map<String, Object>> entity = new HttpEntity<>(requestBody, headers);
+
+        try {
+            String responseStr = restTemplate.postForObject(url, entity, String.class);
+            JsonNode root = objectMapper.readTree(responseStr);
+            String aiReply = root.path("choices").path(0).path("message").path("content").asText();
+
+            // 更新历史记录
+            Map<String, Object> assistantMsg = new HashMap<>();
+            assistantMsg.put("role", "assistant");
+            assistantMsg.put("content", aiReply);
+            history.add(assistantMsg);
+            conversationContexts.put(sessionId, history);
+
+            return aiReply;
+        } catch (Exception e) {
+            log.error("衣柜聊天失败: {}", e.getMessage());
+            return "抱歉，穿搭顾问暂时无法响应，请稍后再试。";
+        }
+    }
+
+    @Override
+    public String generateImage(String prompt) {
+        log.info("[AI Service] 开始通过 Seedream 生成图像, Prompt: {}", prompt);
+        String url = "https://ark.cn-beijing.volces.com/api/v3/images/generations";
+
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_JSON);
+        headers.setBearerAuth(doubaoKey);
+
+        Map<String, Object> requestBody = new HashMap<>();
+        requestBody.put("model", imageModelId);
+        requestBody.put("prompt", prompt);
+        requestBody.put("size", "2K");
+
+        HttpEntity<Map<String, Object>> entity = new HttpEntity<>(requestBody, headers);
+
+        try {
+            String responseStr = restTemplate.postForObject(url, entity, String.class);
+            JsonNode root = objectMapper.readTree(responseStr);
+            
+            if (root.has("error")) {
+                throw new RuntimeException(root.path("error").path("message").asText());
+            }
+
+            String imageUrl = root.path("data").path(0).path("url").asText();
+            log.info("[AI Service] 图像生成成功: {}", imageUrl);
+            return imageUrl;
+        } catch (Exception e) {
+            log.error("图像生成失败: {}", e.getMessage());
+            throw new RuntimeException("生成图像失败：" + e.getMessage());
+        }
     }
 }

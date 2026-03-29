@@ -7,6 +7,7 @@ import { getWeatherNow } from '@/api/weather'
 import MasonryGallery from '@/components/MasonryGallery.vue'
 import { Sunny, PartlyCloudy, Cloudy, Pouring, Lightning, Location, MagicStick, Coffee, Bicycle, Suitcase, Reading, EditPen } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
+import AiAssistant from '@/components/AiAssistant.vue'
 
 const activeTab = ref('season')
 const activeOccasion = ref('日常') // 默认子场景
@@ -516,6 +517,7 @@ onUnmounted(() => {
         <el-empty description="暂时没有找到相关穿搭，请尝试更换场景词喔~" />
       </div>
     </div>
+    <AiAssistant />
   </div>
 </template>
 

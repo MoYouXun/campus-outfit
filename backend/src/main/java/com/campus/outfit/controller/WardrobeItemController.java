@@ -35,4 +35,53 @@ public class WardrobeItemController {
         
         return Result.success(item);
     }
+
+    /**
+     * 获取用户所有衣柜单品
+     */
+    @GetMapping("/list")
+    public Result<java.util.List<WardrobeItem>> list(@RequestHeader("Authorization") String token) {
+        Long userId = jwtUtils.getUserIdFromToken(token.replace("Bearer ", ""));
+        return Result.success(wardrobeItemService.getUserWardrobe(userId));
+    }
+
+    /**
+     * 根据类目获取衣柜单品
+     */
+    @GetMapping("/listByType")
+    public Result<java.util.List<WardrobeItem>> listByType(@RequestParam("type") String type, 
+                                                           @RequestHeader("Authorization") String token) {
+        Long userId = jwtUtils.getUserIdFromToken(token.replace("Bearer ", ""));
+        return Result.success(wardrobeItemService.getWardrobeByType(userId, type));
+    }
+
+    /**
+     * 根据季节获取衣柜单品
+     */
+    @GetMapping("/listBySeason")
+    public Result<java.util.List<WardrobeItem>> listBySeason(@RequestParam("season") String season, 
+                                                             @RequestHeader("Authorization") String token) {
+        Long userId = jwtUtils.getUserIdFromToken(token.replace("Bearer ", ""));
+        return Result.success(wardrobeItemService.getWardrobeBySeason(userId, season));
+    }
+
+    /**
+     * 根据风格获取衣柜单品
+     */
+    @GetMapping("/listByStyle")
+    public Result<java.util.List<WardrobeItem>> listByStyle(@RequestParam("style") String style, 
+                                                            @RequestHeader("Authorization") String token) {
+        Long userId = jwtUtils.getUserIdFromToken(token.replace("Bearer ", ""));
+        return Result.success(wardrobeItemService.getWardrobeByStyle(userId, style));
+    }
+
+    /**
+     * 删除衣柜单品
+     */
+    @DeleteMapping("/{id}")
+    public Result<Void> delete(@PathVariable("id") Long id, @RequestHeader("Authorization") String token) {
+        Long userId = jwtUtils.getUserIdFromToken(token.replace("Bearer ", ""));
+        boolean success = wardrobeItemService.deleteWardrobeItem(id, userId);
+        return success ? Result.success() : Result.fail("删除失败，单品不存在或无权限");
+    }
 }

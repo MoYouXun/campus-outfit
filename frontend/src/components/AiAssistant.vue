@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, nextTick } from 'vue'
-import { MagicStick, Picture, Goods, Loading, Promotion } from '@element-plus/icons-vue'
+import { MagicStick, Picture, Goods, Loading, Promotion, Search, Link } from '@element-plus/icons-vue'
 import { aiAnalyze, aiChat } from '@/api/recommend'
 import { getWardrobeList } from '@/api/wardrobe'
 import { useUserStore } from '@/stores/user'
@@ -186,6 +186,16 @@ const sendMessage = async () => {
     scrollToBottom()
   }
 }
+
+const insertImageReferenceToInput = (title: string, imageUrl: string) => {
+  const reference = ` [引用图片:${title}](${imageUrl}) `
+  inputMessage.value += reference
+  // 自动聚焦输入框
+  nextTick(() => {
+    const input = document.querySelector('.custom-chat-input input') as HTMLInputElement
+    if (input) input.focus()
+  })
+}
 </script>
 
 <template>
@@ -249,8 +259,20 @@ const sendMessage = async () => {
                   <div class="text-xs uppercase font-black text-muted-foreground tracking-tighter">推荐搭配 / Recommendations</div>
                   <div class="grid grid-cols-1 gap-4">
                     <div v-for="item in msg.data.recommendations" :key="item.id" class="bg-white/50 dark:bg-black/20 rounded-xl overflow-hidden border border-border/50 p-2 flex gap-3 group/item">
-                      <div class="w-20 h-28 rounded-lg overflow-hidden bg-secondary/30 shrink-0 border border-white/20">
-                        <el-image :src="item.image" class="w-full h-full object-cover group-hover/item:scale-110 transition-transform duration-500" :preview-src-list="[item.image]" hide-on-click-modal style="transform: translateZ(0); will-change: transform; backface-visibility: hidden;" />
+                      <div class="w-20 h-28 rounded-lg overflow-hidden bg-secondary/30 shrink-0 border border-white/20 relative group/img cursor-pointer">
+                        <el-image 
+                          :src="item.image" 
+                          class="w-full h-full object-cover group-hover/item:scale-105 transition-transform duration-500" 
+                          :preview-src-list="[item.image]" 
+                          :preview-teleported="true"
+                          hide-on-click-modal 
+                          style="transform: translateZ(0); will-change: transform; backface-visibility: hidden;" 
+                        />
+                        <!-- 显式放大与引用按钮提示 -->
+                        <div class="absolute inset-0 bg-black/40 opacity-0 group-hover/img:opacity-100 flex items-center justify-center gap-4 transition-opacity">
+                          <el-icon class="text-white text-xl hover:scale-125 transition-transform" title="查看大图"><Search /></el-icon>
+                          <el-icon class="text-white text-xl hover:scale-125 transition-transform" title="引用此单品" @click.stop="insertImageReferenceToInput(item.title, item.image)"><Link /></el-icon>
+                        </div>
                       </div>
                       <div class="flex-1 flex flex-col justify-center gap-1">
                         <div class="text-xs font-bold text-primary">{{ item.title }}</div>

@@ -345,7 +345,8 @@ public class AiServiceImpl implements AiService {
         Map<String, Object> mainImagePart = new HashMap<>();
         mainImagePart.put("type", "image_url");
         Map<String, String> mainUrlMap = new HashMap<>();
-        mainUrlMap.put("url", "data:image/jpeg;base64," + base64Image);
+        String dataUri = base64Image.startsWith("data:") ? base64Image : "data:image/jpeg;base64," + base64Image;
+        mainUrlMap.put("url", dataUri);
         mainImagePart.put("image_url", mainUrlMap);
         contentList.add(mainImagePart);
 
@@ -353,22 +354,36 @@ public class AiServiceImpl implements AiService {
         if (wardrobeItems != null && !wardrobeItems.isEmpty()) {
             Map<String, Object> wardrobeTextPart = new HashMap<>();
             wardrobeTextPart.put("type", "text");
-            wardrobeTextPart.put("text", "以下是我衣柜里的备选搭配单品：");
+            wardrobeTextPart.put("text", "以下是我衣柜里的部分备选搭配单品(最多展示8件)：");
             contentList.add(wardrobeTextPart);
 
-            for (WardrobeItem item : wardrobeItems) {
+            int count = 0;
+            for (com.campus.outfit.entity.WardrobeItem item : wardrobeItems) {
+                if (count >= 8) break; // 限制最大参考单品数量防止 Token 溢出
                 if (item.getOriginalImageUrl() != null && item.getOriginalImageUrl().startsWith("http")) {
-                    Map<String, Object> imgPart = new HashMap<>();
-                    imgPart.put("type", "image_url");
-                    Map<String, String> urlMap = new HashMap<>();
-                    urlMap.put("url", item.getOriginalImageUrl());
-                    imgPart.put("image_url", urlMap);
-                    contentList.add(imgPart);
-                    
-                    Map<String, Object> idPart = new HashMap<>();
-                    idPart.put("type", "text");
-                    idPart.put("text", "（单品 ID: " + item.getId() + "）");
-                    contentList.add(idPart);
+                    try {
+                        // 解决网络隔离：从本地或内网下载图片字节并转为 Base64
+                        byte[] itemBytes = downloadImageBytes(item.getOriginalImageUrl());
+                        String itemBase64 = java.util.Base64.getEncoder().encodeToString(itemBytes);
+
+                        Map<String, Object> imgPart = new HashMap<>();
+                        imgPart.put("type", "image_url");
+                        Map<String, String> urlMap = new HashMap<>();
+                        // 拼装符合大模型要求的 data URI
+                        urlMap.put("url", "data:image/jpeg;base64," + itemBase64);
+                        imgPart.put("image_url", urlMap);
+                        contentList.add(imgPart);
+                        
+                        Map<String, Object> idPart = new HashMap<>();
+                        idPart.put("type", "text");
+                        idPart.put("text", "（单品 ID: " + item.getId() + "）");
+                        contentList.add(idPart);
+                        
+                        count++;
+                    } catch (Exception e) {
+                        // 容错处理：如果单张图片下载/解码失败，跳过该单品，不影响整体穿搭分析
+                        log.warn("[AI Recommend] 衣柜单品(ID:{})图片提取失败，已跳过。原因: {}", item.getId(), e.getMessage());
+                    }
                 }
             }
         }
@@ -404,7 +419,7 @@ public class AiServiceImpl implements AiService {
             return extractJson(content);
         } catch (Exception e) {
             log.error("衣柜上下文分析失败: {}", e.getMessage());
-            throw new RuntimeException("AI 分析服务异常", e);
+            throw new com.campus.outfit.exception.BusinessException("AI 分析衣柜搭配失败，请检查图片是否合法或稍后重试: " + e.getMessage());
         }
     }
 

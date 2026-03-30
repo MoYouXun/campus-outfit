@@ -8,6 +8,7 @@ import com.campus.outfit.dto.UserAuthRequest;
 import com.campus.outfit.dto.UserUpdateDTO;
 import com.campus.outfit.entity.Follow;
 import com.campus.outfit.entity.User;
+import com.campus.outfit.exception.BusinessException;
 import com.campus.outfit.mapper.FollowMapper;
 import com.campus.outfit.mapper.UserMapper;
 import com.campus.outfit.security.JwtUtils;
@@ -47,9 +48,16 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
             return Result.fail("用户名已存在");
         }
 
+        // 校验性别
+        Integer gender = request.getGender();
+        if (gender == null || (gender != 1 && gender != 2)) {
+            throw new BusinessException("必须选择有效的性别 (1:男, 2:女)");
+        }
+
         User user = new User();
         user.setUsername(username);
         user.setPassword(passwordEncoder.encode(password));
+        user.setGender(gender);
         user.setRole(User.Role.NORMAL);
         user.setFollowCount(0);
         user.setFanCount(0);

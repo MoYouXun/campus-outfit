@@ -44,6 +44,9 @@ public class RecommendServiceImpl implements RecommendService {
     @Autowired
     private FavoriteService favoriteService;
 
+    @Autowired
+    private com.campus.outfit.service.UserService userService;
+
     @Override
     public IPage<OutfitVO> recommendBySeason(String city, Double latitude, Double longitude, int page, int size, Long currentUserId) {
         WeatherInfoVO weather = null;
@@ -70,6 +73,15 @@ public class RecommendServiceImpl implements RecommendService {
         LambdaQueryWrapper<Outfit> wrapper = new LambdaQueryWrapper<Outfit>()
                 .eq(Outfit::getIsPublic, true)
                 .eq(Outfit::getStatus, "PUBLISHED");
+
+        // 注入性别过滤
+        if (currentUserId != null) {
+            com.campus.outfit.entity.User user = userService.getById(currentUserId);
+            if (user != null && user.getGender() != null) {
+                Integer userGender = user.getGender();
+                wrapper.and(w -> w.eq(Outfit::getGender, userGender).or().eq(Outfit::getGender, 0));
+            }
+        }
 
         if (temp < 10) {
             wrapper.and(w -> w.like(Outfit::getTemperatureRange, "冷")
@@ -129,6 +141,15 @@ public class RecommendServiceImpl implements RecommendService {
 
         LambdaQueryWrapper<Outfit> exactWrapper = new LambdaQueryWrapper<Outfit>()
                 .eq(Outfit::getIsPublic, true).eq(Outfit::getStatus, "PUBLISHED");
+        
+        // 注入性别过滤
+        if (currentUserId != null) {
+            com.campus.outfit.entity.User user = userService.getById(currentUserId);
+            if (user != null && user.getGender() != null) {
+                Integer userGender = user.getGender();
+                exactWrapper.and(w -> w.eq(Outfit::getGender, userGender).or().eq(Outfit::getGender, 0));
+            }
+        }
         
         if (occasion != null && occasion.contains("/")) {
             String[] keywords = occasion.split("/");

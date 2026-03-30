@@ -61,7 +61,7 @@ const handlePublish = async (status: 'PUBLISHED' | 'PRIVATE') => {
   try {
     const data = {
       title: publishForm.value.title || '我的校园穿搭',
-      description: aiResult.value.proportionSuggestion,
+      description: aiResult.value.suggestion,
       imageUrls: aiResult.value.imageUrls,
       styleTags: aiResult.value.styleTags,
       colorTags: aiResult.value.colorTags,
@@ -175,7 +175,7 @@ const handlePublish = async (status: 'PUBLISHED' | 'PRIVATE') => {
           </div>
 
           <div class="bg-primary/5 border border-primary/20 rounded-xl p-4 text-xs leading-relaxed">
-            <span class="font-bold text-primary">AI 建议：</span>{{ aiResult.proportionSuggestion }}
+            <span class="font-bold text-primary">AI 建议：</span>{{ aiResult.suggestion }}
           </div>
           
           <div class="flex flex-col gap-2 pt-2">

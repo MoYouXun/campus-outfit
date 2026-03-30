@@ -192,7 +192,6 @@ public class OutfitServiceImpl extends ServiceImpl<OutfitMapper, Outfit> impleme
                     aiMap.put("colorTags", outfit.getColorTags());
                     aiMap.put("itemKeywords", outfit.getItemKeywords());
                     aiMap.put("suggestion", outfit.getDescription());
-                    // 备份季节和温度
                     aiMap.put("season", outfit.getSeason());
                     aiMap.put("temperatureRange", outfit.getTemperatureRange());
                     outfit.setAiAnalysis(objectMapper.writeValueAsString(aiMap));
@@ -200,9 +199,12 @@ public class OutfitServiceImpl extends ServiceImpl<OutfitMapper, Outfit> impleme
                     System.out.println("[WARNING] 序列化 AI 分析结果失败: " + e.getMessage());
                 }
             } else {
-                // 【修改点 3】如果实体类中的 season 为空，但 aiAnalysis JSON 中有数据，则自动反向提取填充
+                // 如果实体类中的字段为空，但 aiAnalysis JSON 中有数据，则反向提取填充
                 try {
                     com.fasterxml.jackson.databind.JsonNode aiNode = objectMapper.readTree(outfit.getAiAnalysis());
+                    if ((outfit.getDescription() == null || outfit.getDescription().isEmpty()) && aiNode.has("suggestion")) {
+                        outfit.setDescription(aiNode.get("suggestion").asText());
+                    }
                     if (outfit.getSeason() == null && aiNode.has("season")) {
                         outfit.setSeason(aiNode.get("season").asText());
                     }
@@ -210,7 +212,7 @@ public class OutfitServiceImpl extends ServiceImpl<OutfitMapper, Outfit> impleme
                         outfit.setTemperatureRange(aiNode.get("temperatureRange").asText());
                     }
                 } catch (Exception e) {
-                    System.out.println("[WARNING] 反向提取季节信息失败: " + e.getMessage());
+                    System.out.println("[WARNING] 反向提取信息失败: " + e.getMessage());
                 }
             }
 

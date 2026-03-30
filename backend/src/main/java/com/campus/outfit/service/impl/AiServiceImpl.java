@@ -72,12 +72,16 @@ public class AiServiceImpl implements AiService {
         String base64Image = Base64.getEncoder().encodeToString(imageBytes);
         try {
             List<DoubaoMessage> messages = new ArrayList<>();
-            // 【修改点 1】增强系统提示词，明确规则和字段要求
-            String systemPrompt = "你是一个专业的校园穿搭分析助手。请严格输出JSON格式的分析结果。" +
-                    "请务必根据图中衣物的材质和类型（例如：羽绒服/厚毛衣代表冬季，短袖/短裤代表夏季，长袖衬衫/薄风衣代表春秋）推断并严格返回以下字段：\n" +
-                    "1. \"season\": 适合的季节（仅限输出：'春', '夏', '秋', '冬', '春秋'）；\n" +
-                    "2. \"temperatureRange\": 适合的温度感受（仅限输出：'冷', '凉', '舒适', '热'）；\n" +
-                    "3. 其他字段需包含：styleTags(数组), colorTags(数组), itemKeywords(数组), suggestion(字符串)。";
+            // 【修改点 1】使用强制 JSON 模板约束 AI 输出，杜绝字段丢失
+            String systemPrompt = "你是一个专业的校园穿搭分析助手。请严格分析图中衣物的材质和类型（如羽绒服代表冬季/冷，短袖代表夏季/热），并必须严格按照以下JSON格式输出结果，不要输出任何其他说明文字或Markdown标记：\n" +
+                    "{\n" +
+                    "  \"season\": \"推断的季节，仅限：春/夏/秋/冬/春秋其中之一\",\n" +
+                    "  \"temperatureRange\": \"推断的温度，仅限：冷/凉/舒适/热其中之一\",\n" +
+                    "  \"styleTags\": [\"风格标签1\", \"风格标签2\"],\n" +
+                    "  \"colorTags\": [\"颜色标签1\", \"颜色标签2\"],\n" +
+                    "  \"itemKeywords\": [\"识别到的单品1\", \"识别到的单品2\"],\n" +
+                    "  \"suggestion\": \"一句话的穿搭建议或改进点\"\n" +
+                    "}";
 
             messages.add(new DoubaoMessage("system", systemPrompt));
 
@@ -91,10 +95,28 @@ public class AiServiceImpl implements AiService {
             messages.add(userMsg);
 
             String aiResponse = doubaoUtil.chatWithVision(messages);
-            return objectMapper.readValue(extractJson(aiResponse), AiAnalysisResult.class);
+            AiAnalysisResult result = objectMapper.readValue(extractJson(aiResponse), AiAnalysisResult.class);
+            
+            // 【新增】防御性字段填充，防止 AI 返回 null 导致前端显示异常
+            if (result.getSeason() == null || "null".equalsIgnoreCase(result.getSeason())) {
+                result.setSeason("春秋"); // 默认中间地带
+            }
+            if (result.getTemperatureRange() == null || "null".equalsIgnoreCase(result.getTemperatureRange())) {
+                result.setTemperatureRange("舒适");
+            }
+            if (result.getSuggestion() == null || result.getSuggestion().trim().isEmpty()) {
+                result.setSuggestion("这套穿搭平衡感很好，适合多种日常校园场景。");
+            }
+            
+            return result;
         } catch (Exception e) {
             log.error("分析失败: {}", e.getMessage());
-            return new AiAnalysisResult();
+            // 兜底返回，避免 NPE
+            AiAnalysisResult fallback = new AiAnalysisResult();
+            fallback.setSeason("春秋");
+            fallback.setTemperatureRange("舒适");
+            fallback.setSuggestion("AI 正在开小差，但这套搭配看起来很有个性！");
+            return fallback;
         }
     }
 

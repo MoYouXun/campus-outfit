@@ -270,7 +270,7 @@ onMounted(loadData)
                 <el-icon><MagicStick /></el-icon> AI 穿搭灵感
               </div>
               <p class="text-[13px] leading-relaxed italic text-foreground/90 leading-relaxed">
-                {{ parsedAiAnalysis.suggestion || parsedAiAnalysis }}
+                {{ (typeof parsedAiAnalysis === 'object' && parsedAiAnalysis.suggestion) ? parsedAiAnalysis.suggestion : (typeof parsedAiAnalysis === 'string' ? parsedAiAnalysis : 'AI 正在分析这套穿搭的深度魅力...') }}
               </p>
             </div>
 

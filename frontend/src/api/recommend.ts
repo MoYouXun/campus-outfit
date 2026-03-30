@@ -60,10 +60,10 @@ export function aiAnalyze(data: { base64Image: string, sessionId: string }) {
 }
 
 /**
- * AI 智能聊天
- * @param data { message: string, sessionId: string }
+ * AI 穿搭智能聊天 (支持视觉多模态)
+ * @param data { message: string, sessionId: string, imageUrls?: string[] }
  */
-export function aiChat(data: { message: string, sessionId: string }) {
+export function aiChat(data: { message: string, sessionId: string, imageUrls?: string[] }) {
   return request({
     url: '/ai/assistant/chat',
     method: 'post',

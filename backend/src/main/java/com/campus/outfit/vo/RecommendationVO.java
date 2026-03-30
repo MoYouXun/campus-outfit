@@ -13,6 +13,11 @@ public class RecommendationVO implements Serializable {
     private static final long serialVersionUID = 1L;
 
     /**
+     * 被选中的衣柜单品 ID
+     */
+    private Long id;
+
+    /**
      * 推荐标题
      */
     private String title;

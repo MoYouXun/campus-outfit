@@ -94,23 +94,40 @@ public class AiAssistantServiceImpl implements AiAssistantService {
 
         String redisKey = CONTEXT_KEY_PREFIX + request.getSessionId();
         List<DoubaoMessage> history = loadHistory(redisKey);
+        
+        // 1. 获取用户衣柜数据，为大模型提供可替换的单品上下文
+        List<WardrobeItem> wardrobeItems = wardrobeItemMapper.selectList(
+                new LambdaQueryWrapper<WardrobeItem>().eq(WardrobeItem::getUserId, userId)
+        );
 
-        // 1. 初始化/注入 System Prompt
+        // 2. 初始化/注入 System Prompt
         if (history.isEmpty()) {
             String systemInstruction = "你是一个支持视觉分析的AI穿搭助手。你必须严格且仅输出JSON格式，严禁包含任何Markdown标记或其他文字。" +
-                    "如果用户附带了图片并提出修改要求（如换颜色/换单品），你必须观察并保留图片中未被要求修改的原始单品和风格，仅替换要求的部分。" +
-                    "JSON结构必须为：{\"style\":\"...\",\"suggestions\":[\"...\"],\"recommendations\":{\"title\":\"...\",\"desc\":\"...\",\"image\":\"...\"}}";
+                    "如果用户提出修改要求（如换颜色/换单品），你必须从用户提供的衣柜列表中选择合适的单品进行替换搭配。" +
+                    "JSON结构必须为：{\"style\":\"...\",\"suggestions\":[\"...\"],\"recommendations\":[{\"id\": 123, \"title\":\"...\",\"desc\":\"...\",\"image\":\"...\"}]}，其中id必须是你从衣柜中挑选的单品ID。";
             history.add(new DoubaoMessage("system", systemInstruction));
         }
 
-        // 2. 构造当前轮次用户消息 (多模态适配)
+        // 构建衣柜上下文提示
+        StringBuilder wardrobeContext = new StringBuilder("\n\n【我的衣柜单品如下，请根据要求从中挑选ID组合】：\n");
+        for (WardrobeItem item : wardrobeItems) {
+            wardrobeContext.append("ID: ").append(item.getId())
+                    .append(" - 类别: ").append(item.getCategoryMain() != null ? item.getCategoryMain() : "未知")
+                    .append("/").append(item.getCategorySub() != null ? item.getCategorySub() : "未知")
+                    .append(" - 颜色: ").append(item.getColor() != null ? item.getColor() : "未知")
+                    .append("\n");
+        }
+
+        // 3. 构造当前轮次用户消息
         DoubaoMessage userMsg = new DoubaoMessage();
         userMsg.setRole("user");
+        String finalMessage = request.getMessage() + wardrobeContext.toString();
+        
         if (request.getImageUrls() == null || request.getImageUrls().isEmpty()) {
-            userMsg.setContent(request.getMessage());
+            userMsg.setContent(finalMessage);
         } else {
             List<DoubaoContentPart> parts = new ArrayList<>();
-            parts.add(DoubaoContentPart.text(request.getMessage()));
+            parts.add(DoubaoContentPart.text(finalMessage));
             for (String url : request.getImageUrls()) {
                 String fmt = doubaoUtil.resolveAndFormatImage(url);
                 if (fmt != null) parts.add(DoubaoContentPart.image(fmt));
@@ -119,20 +136,90 @@ public class AiAssistantServiceImpl implements AiAssistantService {
         }
         history.add(userMsg);
 
-        // 3. 调用 AI 网关
+        // 4. 调用 AI 网关获取回答
         String aiResponse = doubaoUtil.chatWithVision(history);
 
-        // 4. 更新历史与持久化
+        // 5. 更新历史与持久化 (优化：保存历史时，将长篇的衣柜信息剔除，只保留用户的原话，防止Token超限)
+        if (request.getImageUrls() == null || request.getImageUrls().isEmpty()) {
+            userMsg.setContent(request.getMessage());
+        } else {
+            // 如果是多模态，也将其文本部分还原为精简版
+            @SuppressWarnings("unchecked")
+            List<DoubaoContentPart> parts = (List<DoubaoContentPart>) userMsg.getContent();
+            if (parts != null && !parts.isEmpty()) {
+                parts.set(0, DoubaoContentPart.text(request.getMessage()));
+            }
+        }
         history.add(new DoubaoMessage("assistant", aiResponse));
         saveHistory(redisKey, history);
 
-        // 5. 响应解析
+        // 6. 响应解析与 Seedream 图像生成介入
         try {
             String cleanedJson = cleanJsonString(aiResponse);
+            // 调用专门为对话流定制的图像增强方法
+            cleanedJson = enhanceChatJsonWithImage(cleanedJson, request.getImageUrls(), wardrobeItems);
+            
             return objectMapper.readValue(cleanedJson, AiOutfitRecommendVO.class);
         } catch (Exception e) {
             log.error("[AiAssistant] AI 响应解析失败. 原始内容: {}", aiResponse, e);
             throw new BusinessException("AI响应格式解析失败，请重试");
+        }
+    }
+
+    /**
+     * 为对话流专门定制的图像增强：拦截JSON，获取被挑选的衣柜图片Base64，调用Seedream生成新效果图
+     */
+    private String enhanceChatJsonWithImage(String aiJson, List<String> userImageUrls, List<WardrobeItem> wardrobeItems) {
+        try {
+            ObjectNode rootNode = (ObjectNode) objectMapper.readTree(aiJson);
+            JsonNode recNode = rootNode.get("recommendations");
+            if (recNode == null || recNode.isMissingNode()) return aiJson;
+
+            ArrayNode recommendations;
+            if (recNode.isObject()) {
+                recommendations = objectMapper.createArrayNode();
+                recommendations.add(recNode);
+                rootNode.set("recommendations", recommendations);
+            } else if (recNode.isArray()) {
+                recommendations = (ArrayNode) recNode;
+            } else {
+                return aiJson;
+            }
+
+            // 只处理第一套推荐
+            if (recommendations.size() > 0) {
+                ObjectNode itemNode = (ObjectNode) recommendations.get(0);
+                List<String> fusionBase64s = new ArrayList<>();
+
+                // 1. 如果用户本次对话传了图片，作为主参考图加入
+                if (userImageUrls != null && !userImageUrls.isEmpty()) {
+                    String mainB64 = downloadToBase64(userImageUrls.get(0));
+                    if (mainB64 != null) fusionBase64s.add(mainB64);
+                }
+
+                // 2. 提取大模型从衣柜中挑选的单品 ID，获取原图 Base64
+                if (itemNode.has("id") && !itemNode.get("id").isNull()) {
+                    Long itemId = itemNode.path("id").asLong();
+                    wardrobeItems.stream()
+                            .filter(i -> i.getId().equals(itemId))
+                            .findFirst()
+                            .ifPresent(i -> {
+                                String b64 = downloadToBase64(i.getOriginalImageUrl());
+                                if (b64 != null) fusionBase64s.add(b64);
+                            });
+                }
+
+                // 3. 调用 Seedream 绘图大模型重新生成效果图
+                if (!fusionBase64s.isEmpty()) {
+                    String drawPrompt = "将这些衣服单品进行搭配，生成一套完整的全身的穿搭效果图。保持衣服的原貌和特征，光线明亮，背景简洁，适合大学生日常穿搭。";
+                    String effectUrl = seedreamUtil.generateImageFromMultipleBase64(drawPrompt, fusionBase64s);
+                    itemNode.put("image", effectUrl);
+                }
+            }
+            return objectMapper.writeValueAsString(rootNode);
+        } catch (Exception e) {
+            log.error("[AiAssistant] 对话流 JSON 图像增强异常: {}", e.getMessage());
+            return aiJson; // 如果生成失败，优雅降级，返回原纯文本JSON
         }
     }
 

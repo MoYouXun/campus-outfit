@@ -20,15 +20,21 @@ const loading = ref(false)
 const sessionId = ref('')
 const scrollContainer = ref<HTMLElement | null>(null)
 const userStore = useUserStore()
-const quoteContent = ref('') // 引用内容预览
-const closeQuote = () => { quoteContent.value = '' }
+
+// 引用功能增强：锁定真实 URL
+const quoteContent = ref('') // 预览文字 (清洗后)
+const quoteImageUrl = ref('') // 真实图片素材锁 (Base64 或 https 地址)
+const closeQuote = () => { 
+  quoteContent.value = '' 
+  quoteImageUrl.value = ''
+}
 
 // 衣柜选择弹窗相关
 const wardrobeVisible = ref(false)
 const wardrobeItems = ref<any[]>([])
 const wardrobeLoading = ref(false)
 
-// 自定义图片预览 (解耦方案)
+// 图片预览 (Lightbox 模式)
 const showViewer = ref(false)
 const previewUrlList = ref<string[]>([])
 
@@ -36,10 +42,9 @@ const openAssistant = () => {
   visible.value = true
   if (!sessionId.value) {
     sessionId.value = 'task_' + Date.now().toString()
-    // 初始欢迎语
     messages.value.push({
       role: 'assistant',
-      content: '你好！我是你的 AI 校园穿搭助手。你可以上传一张今天的照片，或者从衣柜里选一件衣服，我来帮你分析并推荐搭配！',
+      content: '你好！我是你的 AI 校园穿搭助手。你可以点击“拍照/上传”今天的照片，或者从“衣柜选取”一件衣服，我来帮你分析并推荐搭配！',
       type: 'text'
     })
   }
@@ -52,7 +57,6 @@ const scrollToBottom = async () => {
   }
 }
 
-// 图片转 Base64 辅助函数
 const fileToBase64 = (file: File): Promise<string> => {
   return new Promise((resolve, reject) => {
     const reader = new FileReader()
@@ -62,7 +66,6 @@ const fileToBase64 = (file: File): Promise<string> => {
   })
 }
 
-// 修改图片上传并分析
 const onFileChange = async (e: any) => {
   const file = e.target.files[0]
   if (!file) return
@@ -73,7 +76,7 @@ const onFileChange = async (e: any) => {
   } catch (err) {
     ElMessage.error('图片读取失败')
   }
-  e.target.value = '' // 清空 input
+  e.target.value = ''
 }
 
 const openWardrobe = async () => {
@@ -101,7 +104,6 @@ const selectFromWardrobe = (item: any) => {
 }
 
 const handleAnalyze = async (image: string) => {
-  // 添加用户图片消息
   messages.value.push({
     role: 'user',
     content: image,
@@ -117,14 +119,9 @@ const handleAnalyze = async (image: string) => {
       sessionId: sessionId.value
     })
     
-    // 解析返回的 JSON 字符串
     let resultData = res
     if (typeof res === 'string') {
-      try {
-        resultData = JSON.parse(res)
-      } catch (e) {
-        // 如果解析失败，可能是普通文本回复
-      }
+      try { resultData = JSON.parse(res) } catch (e) {}
     }
 
     messages.value.push({
@@ -146,9 +143,10 @@ const sendMessage = async () => {
   
   const text = inputMessage.value
   const fullText = quoteContent.value ? `${quoteContent.value}\n${text}` : text
+  const currentQuoteImg = quoteImageUrl.value // 缓存当前引用的图片
 
   inputMessage.value = ''
-  closeQuote() // 发送后重置引用
+  closeQuote() // 发送前重置引用状态
   
   messages.value.push({
     role: 'user',
@@ -160,29 +158,26 @@ const sendMessage = async () => {
   scrollToBottom()
 
   try {
+    // 调用 aiChat 并显式传递被引用的图片列表 (imageUrls)
     const reply: any = await aiChat({
       message: fullText,
-      sessionId: sessionId.value
+      sessionId: sessionId.value,
+      imageUrls: currentQuoteImg ? [currentQuoteImg] : []
     })
     
-    // 智能解析逻辑：尝试将响应解析为结构化搭配方案
     try {
       const parsedData = typeof reply === 'string' ? JSON.parse(reply) : reply
-      // 校验穿搭方案架构：包含风格且推荐列表为数组
-      if (parsedData && parsedData.style && Array.isArray(parsedData.recommendations)) {
+      if (parsedData && (parsedData.style || parsedData.recommendations)) {
         messages.value.push({
           role: 'assistant',
           content: '已为你生成专属于你的穿搭实验室报告：',
           type: 'analysis',
           data: parsedData
         })
-        return // 解析成功并推送后退出逻辑
+        return
       }
-    } catch (parseError) {
-      // 解析失败说明是普通对话文本，进入下方的默认逻辑
-    }
+    } catch (parseError) {}
 
-    // 默认回退：作为普通文本消息展示
     messages.value.push({
       role: 'assistant',
       content: reply,
@@ -196,12 +191,16 @@ const sendMessage = async () => {
   }
 }
 
+/**
+ * 插入图片引用到输入框上方预览
+ */
 const insertImageReferenceToInput = (title: string, imageUrl: string) => {
   const fullStr = ` [引用图片:${title}](${imageUrl}) `
-  // 【正则清洗】屏蔽所有的 http(s) 链接以及 data:image 的 Base64 长串，替换为 [图片]
+  // 正则清洗预览文字，屏蔽超长 URL 或 Base64
   quoteContent.value = fullStr.replace(/(https?:\/\/[^\s]+|data:image[^\s]+)/g, '[图片]')
+  // 系统锁定该素材的原始真实数据，用于发送给 Vision 接口
+  quoteImageUrl.value = imageUrl 
   
-  // 自动聚焦输入框
   nextTick(() => {
     const input = document.querySelector('.custom-chat-input input') as HTMLInputElement
     if (input) input.focus()
@@ -231,7 +230,7 @@ const closeViewer = () => {
       </div>
     </div>
 
-    <!-- AI 助手抽屉 -->
+    <!-- AI 助手抽 Drawer -->
     <el-drawer
       v-model="visible"
       title="AI 校园穿搭助手"
@@ -255,46 +254,46 @@ const closeViewer = () => {
                 <el-image :src="msg.content" class="max-w-[200px] block" />
               </div>
 
-              <!-- 复杂的分析报告 -->
+              <!-- 穿搭分析报告 -->
               <div v-else-if="msg.type === 'analysis' && msg.data" class="space-y-4">
                 <div class="font-bold text-accent border-b border-border/30 pb-2 flex items-center gap-2">
-                  <el-icon><MagicStick /></el-icon> 穿搭实验室建议
+                  <el-icon><MagicStick /></el-icon> 穿搭实验室报告
                 </div>
                 
                 <div class="space-y-2">
-                  <div class="text-xs uppercase font-black text-muted-foreground tracking-tighter">穿搭风格 / Style</div>
+                  <div class="text-xs uppercase font-black text-muted-foreground tracking-tighter opacity-60">穿搭风格 / Style</div>
                   <div class="text-lg font-black text-primary">{{ msg.data.style }}</div>
                 </div>
 
                 <div class="space-y-2">
-                  <div class="text-xs uppercase font-black text-muted-foreground tracking-tighter">分析建议 / Suggestions</div>
+                  <div class="text-xs uppercase font-black text-muted-foreground tracking-tighter opacity-60">核心建议 / Suggestions</div>
                   <div v-if="Array.isArray(msg.data.suggestions)" class="space-y-1">
-                    <p v-for="(sug, sIdx) in msg.data.suggestions" :key="sIdx" class="text-xs leading-relaxed opacity-80">• {{ sug }}</p>
+                    <p v-for="(sug, sIdx) in msg.data.suggestions" :key="sIdx" class="text-xs leading-relaxed opacity-90">• {{ sug }}</p>
                   </div>
-                  <p v-else class="text-xs leading-relaxed italic opacity-80">{{ msg.data.suggestions }}</p>
+                  <p v-else class="text-xs leading-relaxed italic opacity-90">{{ msg.data.suggestions }}</p>
                 </div>
 
-                <!-- 推荐效果图列表 -->
+                <!-- 推荐效果图列表 (支持 AI 引用的 ID) -->
                 <div v-if="msg.data.recommendations && msg.data.recommendations.length" class="space-y-3 pt-2">
-                  <div class="text-xs uppercase font-black text-muted-foreground tracking-tighter">推荐搭配 / Recommendations</div>
+                  <div class="text-xs uppercase font-black text-muted-foreground tracking-tighter opacity-60">推荐搭配 / Recommendations</div>
                   <div class="grid grid-cols-1 gap-4">
-                    <div v-for="item in msg.data.recommendations" :key="item.id" class="bg-white/50 dark:bg-black/20 rounded-xl overflow-hidden border border-border/50 p-2 flex gap-3 group/item">
+                    <div v-for="item in msg.data.recommendations" :key="item.id || idx" class="bg-white/50 dark:bg-black/20 rounded-xl overflow-hidden border border-border/50 p-2 flex gap-3 group/item">
                       <div class="w-20 h-28 rounded-lg overflow-hidden bg-secondary/30 shrink-0 border border-white/20 relative group/img cursor-pointer" @click="openCustomViewer(item.image)">
                         <el-image 
                           :src="item.image" 
                           class="w-full h-full object-cover group-hover/item:scale-105 transition-transform duration-500" 
-                          hide-on-click-modal 
-                          style="transform: translateZ(0); will-change: transform; backface-visibility: hidden;" 
+                          lazy
                         />
-                        <!-- 显式放大与引用按钮提示 -->
-                        <div class="absolute inset-0 bg-black/40 opacity-0 group-hover/img:opacity-100 flex items-center justify-center gap-4 transition-opacity">
-                          <el-icon class="text-white text-xl hover:scale-125 transition-transform" title="查看大图"><Search /></el-icon>
-                          <el-icon class="text-white text-xl hover:scale-125 transition-transform" title="引用此单品" @click.stop="insertImageReferenceToInput(item.title, item.image)"><Link /></el-icon>
+                        <!-- 悬浮操作提示 -->
+                        <div class="absolute inset-0 bg-black/40 opacity-0 group-hover/img:opacity-100 flex items-center justify-center gap-4 transition-opacity duration-300">
+                          <el-icon class="text-white text-xl hover:scale-125 transition-transform" title="引用此图微调" @click.stop="insertImageReferenceToInput(item.title, item.image)"><Link /></el-icon>
                         </div>
                       </div>
                       <div class="flex-1 flex flex-col justify-center gap-1">
                         <div class="text-xs font-bold text-primary">{{ item.title }}</div>
-                        <p class="text-[10px] text-muted-foreground leading-tight">{{ item.desc }}</p>
+                        <p class="text-[10px] text-muted-foreground leading-tight line-clamp-3">{{ item.desc }}</p>
+                        <!-- 标识当前是否引用了衣柜 ID -->
+                        <div v-if="item.id" class="text-[8px] text-accent/60 italic">来源：我的衣橱 ID #{{ item.id }}</div>
                       </div>
                     </div>
                   </div>
@@ -303,46 +302,46 @@ const closeViewer = () => {
             </div>
           </div>
 
-          <!-- AI 思考中加载态 -->
+          <!-- 加载中动画 -->
           <div v-if="loading" class="flex justify-start">
             <div class="bg-secondary/20 rounded-2xl p-4 flex items-center gap-2">
               <el-icon class="animate-spin text-primary"><Loading /></el-icon>
-              <span class="text-xs font-medium text-muted-foreground">AI 正在为你施展魔法...</span>
+              <span class="text-xs font-medium text-muted-foreground">AI 正在帮您寻找灵感...</span>
             </div>
           </div>
         </div>
 
         <!-- 输入操作区 -->
         <div class="p-4 border-t border-border/50 space-y-4 bg-background/50 backdrop-blur-md">
-          <!-- 快捷工具栏 -->
           <div class="flex gap-2">
              <label class="flex-1">
-               <div class="h-10 rounded-xl flex items-center justify-center gap-2 bg-secondary/30 hover:bg-primary/10 border border-border/50 text-sm font-medium cursor-pointer transition-colors text-foreground/80">
+               <div class="h-10 rounded-xl flex items-center justify-center gap-2 bg-secondary/30 hover:bg-primary/10 border border-border/50 text-sm font-medium cursor-pointer transition-all text-foreground/80 active:scale-95">
                  <el-icon><Picture /></el-icon> 拍照/上传
                </div>
                <input type="file" accept="image/*" class="hidden" @change="onFileChange" />
              </label>
-             <button @click="openWardrobe" class="flex-1 h-10 rounded-xl flex items-center justify-center gap-2 bg-secondary/30 hover:bg-primary/10 border border-border/50 text-sm font-medium cursor-pointer transition-colors text-foreground/80">
+             <button @click="openWardrobe" class="flex-1 h-10 rounded-xl flex items-center justify-center gap-2 bg-secondary/30 hover:bg-primary/10 border border-border/50 text-sm font-medium cursor-pointer transition-all text-foreground/80 active:scale-95">
                <el-icon><Goods /></el-icon> 衣柜选取
              </button>
           </div>
 
-          <!-- 引用显示区域 -->
-          <div v-if="quoteContent" class="mb-2 px-3 py-1.5 bg-primary/5 border-l-4 border-primary rounded-r-lg flex items-center justify-between">
+          <!-- 引用显示区域 (支持自动清空素材锁) -->
+          <div v-if="quoteContent" class="mb-2 px-3 py-1.5 bg-primary/5 border-l-4 border-primary rounded-r-lg flex items-center justify-between animate-in fade-in slide-in-from-left-2 transition-all">
             <div class="text-[10px] text-primary/80 truncate pr-4 italic">
-              当前引用：{{ quoteContent }}
+              当前引用画像：{{ quoteContent }}
             </div>
             <el-icon class="cursor-pointer hover:text-red-500 transition-colors" @click="closeQuote"><CircleClose /></el-icon>
           </div>
 
-          <!-- 文本输入框 -->
+          <!-- 聊天输入框 -->
           <div class="relative flex items-center gap-2">
             <el-input
               v-model="inputMessage"
-              placeholder="问问 AI 搭配建议..."
+              placeholder="发送消息咨询 AI 校园搭配..."
               @keyup.enter="sendMessage"
               :disabled="loading"
               class="custom-chat-input"
+              clearable
             >
               <template #suffix>
                 <el-button 
@@ -358,7 +357,8 @@ const closeViewer = () => {
           </div>
         </div>
       </div>
-      <!-- 自定义图片预览器 (受控渲染，防止重排闪烁) -->
+
+      <!-- 图片预览组件 -->
       <el-image-viewer
         v-if="showViewer"
         :url-list="previewUrlList"
@@ -367,11 +367,11 @@ const closeViewer = () => {
       />
     </el-drawer>
 
-    <!-- 衣柜选取单品弹窗 -->
-    <el-dialog v-model="wardrobeVisible" title="从电子衣橱挑选单品" width="400px" append-to-body destroy-on-close class="glass-dialog shadow-huge">
+    <!-- 极简玻离衣柜弹窗 -->
+    <el-dialog v-model="wardrobeVisible" title="选择衣橱单品" width="400px" append-to-body destroy-on-close class="glass-dialog">
        <div v-loading="wardrobeLoading" class="min-h-[300px]">
-          <div v-if="wardrobeItems.length === 0" class="py-10">
-             <el-empty description="衣柜还是空的喔" :image-size="80" />
+          <div v-if="wardrobeItems.length === 0" class="py-10 text-center">
+             <el-empty description="衣柜还是空的呀" :image-size="80" />
           </div>
           <div v-else class="grid grid-cols-3 gap-3">
              <div 
@@ -382,7 +382,7 @@ const closeViewer = () => {
              >
                 <img :src="item.originalImageUrl" class="w-full h-full object-cover" />
                 <div class="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center text-[10px] text-white font-bold transition-opacity">
-                  选择此件
+                  选用此单品
                 </div>
              </div>
           </div>
@@ -392,28 +392,17 @@ const closeViewer = () => {
 </template>
 
 <style>
+/* 继承并精简原有样式 */
 .ai-assistant-drawer .el-drawer__body {
   padding: 0 !important;
-  background: radial-gradient(circle at 100% 100%, rgba(var(--primary-rgb), 0.05) 0%, transparent 40%),
-              rgba(var(--background-rgb), 1);
-}
-
-.custom-scrollbar::-webkit-scrollbar {
-  width: 4px;
-}
-.custom-scrollbar::-webkit-scrollbar-track {
-  background: transparent;
-}
-.custom-scrollbar::-webkit-scrollbar-thumb {
-  background: rgba(var(--primary-rgb), 0.2);
-  border-radius: 4px;
 }
 
 .custom-chat-input .el-input__wrapper {
   padding-right: 4px !important;
   border-radius: 20px !important;
-  box-shadow: 0 4px 12px rgba(0,0,0,0.05) !important;
+  box-shadow: none !important;
   background: rgba(var(--secondary-rgb), 0.3) !important;
+  border: 1px solid rgba(var(--border-rgb), 0.2) !important;
 }
 
 .ai-assistant-wrapper .fab-btn {
@@ -423,18 +412,9 @@ const closeViewer = () => {
   z-index: 1000;
 }
 
-@keyframes bounce-slow {
-  0%, 100% { transform: translateY(-5%); animation-timing-function: cubic-bezier(0.8, 0, 1, 1); }
-  50% { transform: translateY(0); animation-timing-function: cubic-bezier(0, 0, 0.2, 1); }
-}
-
-.animate-bounce-slow {
-  animation: bounce-slow 3s infinite;
-}
-
 .glass-dialog.el-dialog {
-  border-radius: 20px;
+  border-radius: 24px !important;
+  backdrop-filter: blur(20px) !important;
   background: rgba(255, 255, 255, 0.8) !important;
-  backdrop-filter: blur(20px);
 }
 </style>

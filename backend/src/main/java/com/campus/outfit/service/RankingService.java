@@ -1,22 +1,20 @@
 package com.campus.outfit.service;
 
-import java.util.List;
-
 public interface RankingService {
     /**
      * 获取热度排行榜
      */
-    List<com.campus.outfit.vo.OutfitVO> getHotRanking(int limit);
+    java.util.List<com.campus.outfit.entity.Outfit> getHotRanking(String gender, int limit);
 
     /**
      * 获取风格排行榜
      */
-    List<com.campus.outfit.vo.OutfitVO> getStyleRanking(String style, int limit);
+    java.util.List<com.campus.outfit.entity.Outfit> getStyleRanking(String style, String gender, int limit);
 
     /**
      * 获取校园排行榜
      */
-    List<com.campus.outfit.vo.OutfitVO> getSchoolRanking(String school, int limit);
+    java.util.List<com.campus.outfit.entity.Outfit> getSchoolRanking(String school, String gender, int limit);
 
     /**
      * 定时任务刷新排行榜（模拟，由定时任务调用）

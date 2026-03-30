@@ -80,4 +80,13 @@ public class Outfit implements Serializable {
     @TableLogic
     @TableField("is_deleted")
     private Integer isDeleted;
+
+    @TableField(exist = false)
+    private String authorName;
+
+    @TableField(exist = false)
+    private String authorAvatar;
+
+    @TableField(exist = false)
+    private Integer rankTrend; // 排名趋势: 1上升, 0持平, -1下降, 999新上榜
 }

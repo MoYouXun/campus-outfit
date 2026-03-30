@@ -6,12 +6,12 @@ import com.campus.outfit.entity.User;
 import com.campus.outfit.mapper.UserMapper;
 import com.campus.outfit.service.OutfitService;
 import com.campus.outfit.service.RankingService;
-import com.campus.outfit.vo.OutfitVO;
-import org.springframework.beans.BeanUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Service;
 
+import java.time.Duration;
+import java.time.LocalDateTime;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -30,91 +30,114 @@ public class RankingServiceImpl implements RankingService {
     private static final String RANK_HOT_KEY = "ranking:hot";
 
     @Override
-    public List<OutfitVO> getHotRanking(int limit) {
-        // 尝试从 Redis 获取
-        Set<Object> ids = redisTemplate.opsForZSet().reverseRange(RANK_HOT_KEY, 0, limit - 1);
+    public List<Outfit> getHotRanking(String gender, int limit) {
+        String key = (gender != null && !gender.isEmpty()) ? RANK_HOT_KEY + ":" + gender.toUpperCase() : RANK_HOT_KEY;
+        Set<Object> ids = redisTemplate.opsForZSet().reverseRange(key, 0, limit - 1);
         if (ids == null || ids.isEmpty()) {
-            return fallbackRanking(limit);
+            return fallbackRanking(gender, limit);
         }
         
         List<Long> outfitIds = ids.stream().map(obj -> Long.valueOf(obj.toString())).collect(Collectors.toList());
-        List<Outfit> outfits = outfitService.listByIds(outfitIds);
-        return convertToVOList(outfits);
+        List<Outfit> rawList = outfitService.listByIds(outfitIds);
+        
+        // 1. 内存重排，保证按 Redis 分数顺序
+        Map<Long, Outfit> map = rawList.stream().collect(Collectors.toMap(Outfit::getId, o -> o));
+        List<Outfit> sortedList = outfitIds.stream().map(map::get).filter(Objects::nonNull).collect(Collectors.toList());
+        
+        // 2. 计算排名趋势 (对比 :prev 集合)
+        String prevKey = key + ":prev";
+        for (int i = 0; i < sortedList.size(); i++) {
+            Outfit outfit = sortedList.get(i);
+            Long prevRank = redisTemplate.opsForZSet().reverseRank(prevKey, outfit.getId().toString());
+            if (prevRank == null) {
+                outfit.setRankTrend(999); // 新上榜
+            } else if (prevRank > i) {
+                outfit.setRankTrend(1); // 上升
+            } else if (prevRank < i) {
+                outfit.setRankTrend(-1); // 下降
+            } else {
+                outfit.setRankTrend(0); // 持平
+            }
+        }
+        fillAuthorInfo(sortedList);
+        return sortedList;
     }
 
     @Override
-    public List<OutfitVO> getStyleRanking(String style, int limit) {
-        // 简化版：从数据库按风格筛选热度最高的
-        List<Outfit> outfits = outfitService.list(new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<Outfit>()
-                .apply("JSON_CONTAINS(style_tags, '\"{0}\"')", style)
+    public List<Outfit> getStyleRanking(String style, String gender, int limit) {
+        LambdaQueryWrapper<Outfit> wrapper = new LambdaQueryWrapper<Outfit>()
+                .apply("JSON_CONTAINS(style_tags, {0})", "\"" + style + "\"")
                 .eq(Outfit::getIsPublic, true)
-                .eq(Outfit::getStatus, "PUBLISHED")
-                .orderByDesc(Outfit::getLikeCount)
-                .last("LIMIT " + limit));
-        return convertToVOList(outfits);
+                .eq(Outfit::getStatus, "PUBLISHED");
+        if (gender != null && !gender.isEmpty()) {
+            wrapper.in(Outfit::getGenderType, gender.toUpperCase(), "UNISEX");
+        }
+        wrapper.orderByDesc(Outfit::getLikeCount).last("LIMIT " + limit);
+        List<Outfit> list = outfitService.list(wrapper);
+        fillAuthorInfo(list);
+        return list;
     }
 
     @Override
-    public List<OutfitVO> getSchoolRanking(String school, int limit) {
-        // 后续扩展：结合 User 表进行联表查询，此处暂取全库热度
-        return fallbackRanking(limit);
+    public List<Outfit> getSchoolRanking(String school, String gender, int limit) {
+        return fallbackRanking(gender, limit);
     }
 
     @Override
     public void refreshRankings() {
-        // 获取热度最高的 100 条
-        List<Outfit> topOutfits = outfitService.list(new LambdaQueryWrapper<Outfit>()
-                .eq(Outfit::getIsPublic, true)
-                .eq(Outfit::getStatus, "PUBLISHED")
-                .orderByDesc(Outfit::getLikeCount)
-                .last("LIMIT 100"));
-        
-        redisTemplate.delete(RANK_HOT_KEY);
-        for (Outfit outfit : topOutfits) {
-            double score = outfit.getLikeCount() * 1.0 + outfit.getCommentCount() * 1.5;
-            redisTemplate.opsForZSet().add(RANK_HOT_KEY, outfit.getId().toString(), score);
-        }
-    }
+        List<Outfit> allOutfits = outfitService.list(new LambdaQueryWrapper<Outfit>()
+                .eq(Outfit::getIsPublic, true).eq(Outfit::getStatus, "PUBLISHED"));
+                
+        // 备份旧榜单用于计算趋势
+        if(Boolean.TRUE.equals(redisTemplate.hasKey(RANK_HOT_KEY))) redisTemplate.rename(RANK_HOT_KEY, RANK_HOT_KEY + ":prev");
+        if(Boolean.TRUE.equals(redisTemplate.hasKey(RANK_HOT_KEY + ":MALE"))) redisTemplate.rename(RANK_HOT_KEY + ":MALE", RANK_HOT_KEY + ":MALE:prev");
+        if(Boolean.TRUE.equals(redisTemplate.hasKey(RANK_HOT_KEY + ":FEMALE"))) redisTemplate.rename(RANK_HOT_KEY + ":FEMALE", RANK_HOT_KEY + ":FEMALE:prev");
 
-    private List<OutfitVO> fallbackRanking(int limit) {
-        List<Outfit> outfits = outfitService.list(new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<Outfit>()
-                .eq(Outfit::getIsPublic, true)
-                .eq(Outfit::getStatus, "PUBLISHED")
-                .orderByDesc(Outfit::getLikeCount)
-                .last("LIMIT " + limit));
-        return convertToVOList(outfits);
-    }
+        for (Outfit outfit : allOutfits) {
+            // Hacker News 算法变体：时间衰减
+            long hours = Duration.between(outfit.getCreateTime(), LocalDateTime.now()).toHours();
+            double decay = Math.pow((hours + 2.0), 1.5);
+            double score = (outfit.getLikeCount() * 1.0 + outfit.getCommentCount() * 1.5) / decay;
 
-    private List<OutfitVO> convertToVOList(List<Outfit> outfits) {
-        if (outfits == null || outfits.isEmpty()) {
-            return new ArrayList<>();
-        }
-
-        // 统一刷新 URL
-        outfits.forEach(outfitService::refreshOutfitUrls);
-
-        // 批量获取作者信息
-        Set<Long> userIds = outfits.stream().map(Outfit::getUserId).filter(Objects::nonNull).collect(Collectors.toSet());
-        Map<Long, User> userMap = new HashMap<>();
-        if (!userIds.isEmpty()) {
-            List<User> users = userMapper.selectBatchIds(userIds);
-            if (users != null) {
-                userMap = users.stream().collect(Collectors.toMap(User::getId, u -> u));
+            String idStr = outfit.getId().toString();
+            redisTemplate.opsForZSet().add(RANK_HOT_KEY, idStr, score);
+            if ("MALE".equals(outfit.getGenderType()) || "UNISEX".equals(outfit.getGenderType())) {
+                redisTemplate.opsForZSet().add(RANK_HOT_KEY + ":MALE", idStr, score);
+            }
+            if ("FEMALE".equals(outfit.getGenderType()) || "UNISEX".equals(outfit.getGenderType())) {
+                redisTemplate.opsForZSet().add(RANK_HOT_KEY + ":FEMALE", idStr, score);
             }
         }
+        // 裁剪保留前100
+        redisTemplate.opsForZSet().removeRange(RANK_HOT_KEY, 0, -101);
+        redisTemplate.opsForZSet().removeRange(RANK_HOT_KEY + ":MALE", 0, -101);
+        redisTemplate.opsForZSet().removeRange(RANK_HOT_KEY + ":FEMALE", 0, -101);
+    }
 
-        final Map<Long, User> finalUserMap = userMap;
-        return outfits.stream().map(o -> {
-            OutfitVO vo = new OutfitVO();
-            BeanUtils.copyProperties(o, vo);
-            User author = finalUserMap.get(o.getUserId());
-            if (author != null) {
-                String dispName = (author.getNickname() != null && !author.getNickname().trim().isEmpty()) 
-                                  ? author.getNickname() : author.getUsername();
-                vo.setUsername(dispName);
-                vo.setUserAvatar(author.getAvatar());
+    private List<Outfit> fallbackRanking(String gender, int limit) {
+        LambdaQueryWrapper<Outfit> wrapper = new LambdaQueryWrapper<Outfit>()
+                .eq(Outfit::getIsPublic, true)
+                .eq(Outfit::getStatus, "PUBLISHED");
+        if (gender != null && !gender.isEmpty()) {
+            wrapper.in(Outfit::getGenderType, gender.toUpperCase(), "UNISEX");
+        }
+        wrapper.orderByDesc(Outfit::getLikeCount).last("LIMIT " + limit);
+        List<Outfit> list = outfitService.list(wrapper);
+        fillAuthorInfo(list);
+        return list;
+    }
+
+    private void fillAuthorInfo(List<Outfit> outfits) {
+        if (outfits == null || outfits.isEmpty()) return;
+        List<Long> userIds = outfits.stream().map(Outfit::getUserId).distinct().collect(Collectors.toList());
+        if(userIds.isEmpty()) return;
+        Map<Long, User> userMap = userMapper.selectBatchIds(userIds).stream().collect(Collectors.toMap(User::getId, u -> u));
+        for (Outfit outfit : outfits) {
+            User user = userMap.get(outfit.getUserId());
+            if (user != null) {
+                outfit.setAuthorName(user.getNickname() != null ? user.getNickname() : user.getUsername());
+                outfit.setAuthorAvatar(user.getAvatar());
             }
-            return vo;
-        }).collect(Collectors.toList());
+        }
     }
 }

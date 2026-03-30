@@ -213,6 +213,9 @@ public class OutfitServiceImpl extends ServiceImpl<OutfitMapper, Outfit> impleme
                         String t = aiNode.get("temperatureRange").asText();
                         outfit.setTemperatureRange("null".equalsIgnoreCase(t) ? "舒适" : t);
                     }
+                    if (outfit.getGender() == null && aiNode.has("gender")) {
+                        outfit.setGender(aiNode.get("gender").asInt(0));
+                    }
                 } catch (Exception e) {
                     System.out.println("[WARNING] 反向提取信息失败: " + e.getMessage());
                 }

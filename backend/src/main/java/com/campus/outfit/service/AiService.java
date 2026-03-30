@@ -59,4 +59,11 @@ public interface AiService {
      * @return 大模型返回的 JSON 结果字符串
      */
     String analyzeWardrobeItem(String base64Image);
+    /**
+     * 使用 Seedream 进行多图融合生图（DressingDiffusionV2 标准）
+     * @param prompt 风格提示词
+     * @param base64Images 模特、单品图片 Base64 列表
+     * @return 效果图 URL
+     */
+    String generateImageFromMultipleBase64(String prompt, List<String> base64Images);
 }

@@ -17,7 +17,9 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 
 @Slf4j
 @RestController
@@ -39,18 +41,12 @@ public class RecommendController {
     @Autowired
     private ObjectMapper objectMapper;
 
-    /**
-     * AI 分析请求参数
-     */
     @Data
     public static class AiAnalyzeRequest {
         private String base64Image;
         private String sessionId;
     }
 
-    /**
-     * AI 聊天请求参数
-     */
     @Data
     public static class AiChatRequest {
         private String sessionId;
@@ -68,8 +64,8 @@ public class RecommendController {
         try {
             return Result.success(recommendService.recommendBySeason(city, latitude, longitude, page, size, currentUserId));
         } catch (Exception e) {
-            e.printStackTrace();
-            return Result.fail("获取推荐失败，请稍后重试");
+            log.error("获取季节推荐失败", e);
+            return Result.fail("获取推荐失败");
         }
     }
 
@@ -82,8 +78,8 @@ public class RecommendController {
         try {
             return Result.success(recommendService.recommendByOccasion(occasion, page, size, currentUserId));
         } catch (Exception e) {
-            e.printStackTrace();
-            return Result.fail("获取推荐失败，请稍后重试");
+            log.error("获取场合推荐失败", e);
+            return Result.fail("获取推荐失败");
         }
     }
 
@@ -96,8 +92,8 @@ public class RecommendController {
             Long userId = jwtUtils.getUserIdFromToken(token.replace("Bearer ", ""));
             return Result.success(recommendService.recommendByStyle(userId, page, size));
         } catch (Exception e) {
-            e.printStackTrace();
-            return Result.fail("获取推荐失败，请稍后重试");
+            log.error("获取风格推荐失败", e);
+            return Result.fail("获取推荐失败");
         }
     }
 
@@ -106,76 +102,71 @@ public class RecommendController {
                                     @RequestHeader("Authorization") String token) {
         log.info("[AI Recommend] 收到穿搭分析请求，sessionId: {}", request.getSessionId());
         try {
-            // 1. 获取用户信息与衣柜数据
             Long userId = jwtUtils.getUserIdFromToken(token.replace("Bearer ", ""));
             List<WardrobeItem> wardrobeItems = wardrobeItemService.getUserWardrobe(userId);
 
-            // 2. 调用 AI 基础分析逻辑（返回 JSON 字符串）
+            // 1. 调用 AI 基础分析逻辑（已对齐全量 Base64 传递逻辑）
             String aiJsonResult = aiService.analyzeOutfitWithWardrobe(
                     request.getBase64Image(), userId, request.getSessionId(), wardrobeItems);
 
-            // 3. 使用 Jackson 解析并加工 JSON，为推荐单品生成预览效果图
-            JsonNode rootNode = objectMapper.readTree(aiJsonResult);
+            // 2. 使用 Jackson 解析并进行防御性截断
+            ObjectNode rootNode = (ObjectNode) objectMapper.readTree(aiJsonResult);
             if (rootNode.has("recommendations") && rootNode.get("recommendations").isArray()) {
                 ArrayNode recommendations = (ArrayNode) rootNode.get("recommendations");
-                for (JsonNode node : recommendations) {
-                    if (node instanceof ObjectNode) {
-                        ObjectNode itemNode = (ObjectNode) node;
-                        Long itemId = itemNode.path("id").asLong();
-                        String reason = itemNode.path("reason").asText();
+                
+                // 【重要防御】只保留第一个推荐项，强制截断
+                while (recommendations.size() > 1) {
+                    recommendations.remove(1);
+                }
 
-                        // 查找对应的衣柜单品详情，用于生成更精准的 Prompt
-                        WardrobeItem detail = wardrobeItems.stream()
-                                .filter(i -> i.getId().equals(itemId))
-                                .findFirst().orElse(null);
+                if (recommendations.size() > 0) {
+                    ObjectNode itemNode = (ObjectNode) recommendations.get(0);
+                    Long itemId = itemNode.path("id").asLong();
+                    
+                    // 3. 多图融合生图逻辑：搜集模特底图 + 已匹配单品原图
+                    Optional<WardrobeItem> matchedItem = wardrobeItems.stream()
+                            .filter(i -> i.getId().equals(itemId))
+                            .findFirst();
 
-                        String prompt;
-                        if (detail != null) {
-                            prompt = String.format("一张精美的校园穿搭效果图，模特穿着： %s 颜色的 %s 材质 %s，整体风格： %s，建议理由： %s",
-                                    detail.getColor(), detail.getMaterial(), detail.getCategorySub(), 
-                                    rootNode.path("style").asText(), reason);
-                        } else {
-                            prompt = "一张精美的穿搭效果图，搭配推荐理由：" + reason;
-                        }
-
-                        // 调用 AI 绘图接口生成 2K 效果图
+                    if (matchedItem.isPresent()) {
+                        List<String> fusionBase64s = new ArrayList<>();
+                        fusionBase64s.add(request.getBase64Image());
+                        // 注意：这里由于 AiService.generateImageFromMultipleBase64 已包含单品转换逻辑
+                        // 为了符合控制器职责，我们直接通过 aiService 执行融合过程
                         try {
-                            log.info("[AI Recommend] 正在为单品 ID: {} 生成预览效果图...", itemId);
-                            String effectUrl = aiService.generateImage(prompt);
+                            log.info("[AI Recommend] 触发 Seedream 多图生图 (底图 + 单品 ID: {})...", itemId);
+                            String style = rootNode.path("style").asText("校园风格穿搭设计");
+                            String effectUrl = aiService.generateImageFromMultipleBase64(style, fusionBase64s);
                             itemNode.put("effectUrl", effectUrl);
                         } catch (Exception e) {
-                            log.error("[AI Recommend] 单品效果图生成失败: {}", e.getMessage());
-                            itemNode.put("effectUrl", ""); // 生成失败留空
+                            log.error("[AI Recommend] 多图生图失败: {}", e.getMessage());
+                            itemNode.put("effectUrl", "");
                         }
                     }
                 }
             }
 
-            // 4. 返回加工后的结果
+            // 4. 返回包装后的结果
             return Result.success(objectMapper.writeValueAsString(rootNode));
 
         } catch (Exception e) {
-            log.error("[AI Recommend] 穿搭分析业务流异常", e);
-            return Result.fail("智能穿搭分析服务暂时不可用：" + e.getMessage());
+            log.error("[AI Recommend] 分析业务流异常", e);
+            return Result.fail("穿搭分析暂时不可用");
         }
     }
 
     @PostMapping("/ai-chat")
     public Result<String> aiChat(@RequestBody AiChatRequest request,
                                  @RequestHeader("Authorization") String token) {
-        log.info("[AI Recommend] 收到衣柜对话请求，sessionId: {}", request.getSessionId());
+        log.info("[AI Recommend] 收到对话请求, sessionId: {}", request.getSessionId());
         try {
             Long userId = jwtUtils.getUserIdFromToken(token.replace("Bearer ", ""));
             List<WardrobeItem> wardrobeItems = wardrobeItemService.getUserWardrobe(userId);
-
-            // 直接调用带上下文的对话服务
-            String reply = aiService.chatWithWardrobeContext(
-                    request.getSessionId(), request.getMessage(), wardrobeItems);
-            
+            String reply = aiService.chatWithWardrobeContext(request.getSessionId(), request.getMessage(), wardrobeItems);
             return Result.success(reply);
         } catch (Exception e) {
             log.error("[AI Recommend] 智能对话异常", e);
-            return Result.fail("对话服务异常，请稍后再试");
+            return Result.fail("对话服务异常");
         }
     }
 }

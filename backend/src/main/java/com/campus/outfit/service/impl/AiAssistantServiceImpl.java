@@ -1,10 +1,13 @@
 package com.campus.outfit.service.impl;
 
+import com.campus.outfit.dto.AiChatRequest;
 import com.campus.outfit.entity.WardrobeItem;
+import com.campus.outfit.exception.BusinessException;
 import com.campus.outfit.mapper.WardrobeItemMapper;
 import com.campus.outfit.service.AiAssistantService;
 import com.campus.outfit.util.DoubaoUtil;
 import com.campus.outfit.util.SeedreamUtil;
+import com.campus.outfit.vo.AiOutfitRecommendVO;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
@@ -12,6 +15,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
 import org.springframework.http.ResponseEntity;
@@ -35,6 +39,9 @@ public class AiAssistantServiceImpl implements AiAssistantService {
 
     @Autowired
     private ObjectMapper objectMapper;
+
+    @Autowired
+    private StringRedisTemplate redisTemplate;
 
     private final RestTemplate restTemplate = new RestTemplate();
 
@@ -68,6 +75,38 @@ public class AiAssistantServiceImpl implements AiAssistantService {
         return enhanceJsonWithImage(aiJson, mainBase64, userId, items);
     }
 
+    @Override
+    public AiOutfitRecommendVO chatForOutfit(AiChatRequest request, Long userId) {
+        log.info("[AiAssistant] 开始多轮穿搭聊天. userId: {}, sessionId: {}", userId, request.getSessionId());
+
+        // 1. 构造强制 JSON 输出的 System 指令
+        String systemInstruction = "你是一个校园穿搭AI助手。你必须严格且仅输出JSON格式，严禁包含任何Markdown标记或其他文字。" +
+                "JSON结构必须为：{\"style\":\"...\",\"suggestions\":[\"...\"],\"recommendations\":{\"title\":\"...\",\"desc\":\"...\",\"image\":\"...\"}}";
+
+        // 2. 调用 DoubaoUtil (工具类内部已实现 Redis 历史维护逻辑)
+        String userInputWithPrompt = systemInstruction + "\n用户当前输入: " + request.getMessage();
+        String aiResponse = doubaoUtil.chat(userId, request.getSessionId(), userInputWithPrompt);
+
+        // 3. 清理结果并尝试解析
+        try {
+            String cleanedJson = cleanJsonString(aiResponse);
+            return objectMapper.readValue(cleanedJson, AiOutfitRecommendVO.class);
+        } catch (Exception e) {
+            log.error("[AiAssistant] AI 响应解析失败. 原始内容: {}", aiResponse, e);
+            throw new BusinessException("AI响应格式解析失败，请重试");
+        }
+    }
+
+    private String cleanJsonString(String raw) {
+        if (raw == null) return "{}";
+        // 移除 Markdown 代码块标记 ```json ... ```
+        String cleaned = raw.trim();
+        if (cleaned.startsWith("```")) {
+            cleaned = cleaned.replaceAll("^```(json)?", "").replaceAll("```$", "").trim();
+        }
+        return cleaned;
+    }
+
     private String enhanceJsonWithImage(String aiJson, String mainBase64, Long userId, List<WardrobeItem> wardrobeItems) {
         try {
             ObjectNode rootNode = (ObjectNode) objectMapper.readTree(aiJson);
@@ -76,7 +115,6 @@ public class AiAssistantServiceImpl implements AiAssistantService {
 
             ArrayNode recommendations;
             if (recNode.isObject()) {
-                // 【幻觉纠正】处理单对象格式幻觉，自动转为数组
                 recommendations = objectMapper.createArrayNode();
                 recommendations.add(recNode);
                 rootNode.set("recommendations", recommendations);
@@ -86,7 +124,6 @@ public class AiAssistantServiceImpl implements AiAssistantService {
                 return aiJson;
             }
 
-            // 【重要防御】强制截断：仅处理第一个推荐
             while (recommendations.size() > 1) {
                 recommendations.remove(1);
             }

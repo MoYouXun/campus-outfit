@@ -50,8 +50,6 @@ public class Outfit implements Serializable {
 
     @TableField("temperature_range")
     private String temperatureRange;
-    @TableField("gender")
-    private Integer gender;
     @TableField("status")
     private String status;
     private Boolean isPublic;

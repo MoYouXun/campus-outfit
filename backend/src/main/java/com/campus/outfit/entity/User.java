@@ -22,7 +22,7 @@ public class User implements Serializable {
     private String avatar;
     private String nickname;
     private String bio;
-    private Integer gender;
+    private String gender;
     private String school;
     private Role role;
     

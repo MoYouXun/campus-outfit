@@ -11,5 +11,5 @@ public class UserUpdateDTO {
     private String nickname;
     private String avatar;
     private String bio;
-    private Integer gender;
+    private String gender;
 }

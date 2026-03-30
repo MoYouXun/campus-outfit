@@ -77,7 +77,6 @@ public class AiServiceImpl implements AiService {
                     "{\n" +
                     "  \"season\": \"对于'season'字段，你的值只能是['春/秋', '夏', '冬']这三个选项之一\",\n" +
                     "  \"temperatureRange\": \"对于'temperatureRange'字段，你的值只能是['冷', '凉', '舒适', '热']这四个选项之一。绝对不要输出这7个词以外的任何其他描述。\",\n" +
-                    "  \"gender\": \"分析图中穿搭适用性别。0代表中性/男女同款，1代表男款，2代表女款。你必须返回这三个数字之一。\",\n" +
                     "  \"styleTags\": [\"风格标签1\", \"风格标签2\"],\n" +
                     "  \"colorTags\": [\"颜色标签1\", \"颜色标签2\"],\n" +
                     "  \"itemKeywords\": [\"识别到的单品1\", \"识别到的单品2\"],\n" +

@@ -13,15 +13,13 @@ const form = reactive({
   username: '',
   email: '',
   password: '',
-  confirmPassword: '',
-  gender: null
+  confirmPassword: ''
 })
 
 const rules = {
   username: [{ required: true, message: '请输入用户名', trigger: 'blur' }],
   email: [{ required: true, type: 'email', message: '请输入有效邮箱', trigger: 'blur' }],
   password: [{ required: true, min: 6, message: '密码至少 6 位', trigger: 'blur' }],
-  gender: [{ required: true, message: '请选择性别', trigger: 'change' }],
   confirmPassword: [
     { required: true, message: '请确认密码', trigger: 'blur' },
     { validator: (_rule: any, value: string, callback: any) => {
@@ -71,21 +69,6 @@ const handleRegister = () => {
           <el-input v-model="form.confirmPassword" type="password" placeholder="确认密码" :prefix-icon="Lock" show-password size="large" class="custom-input" />
         </el-form-item>
         
-        <el-form-item prop="gender" label="您的性别" class="gender-item">
-          <el-radio-group v-model="form.gender" class="w-full flex justify-around">
-            <el-radio :label="1" size="large" border class="gender-radio">
-              <div class="flex items-center gap-2">
-                <span class="text-blue-500 font-bold">♂</span> 男
-              </div>
-            </el-radio>
-            <el-radio :label="2" size="large" border class="gender-radio male-border">
-              <div class="flex items-center gap-2">
-                <span class="text-pink-500 font-bold">♀</span> 女
-              </div>
-            </el-radio>
-          </el-radio-group>
-        </el-form-item>
-        
         <el-button type="primary" class="w-full !h-12 !rounded-xl text-lg font-bold shadow-lg shadow-primary/20" :loading="loading" @click="handleRegister">
           立即注 册
         </el-button>
@@ -110,22 +93,5 @@ const handleRegister = () => {
 .custom-input :deep(.el-input__wrapper.is-focus) {
   border-color: var(--el-color-primary);
   background: transparent;
-}
-.gender-item :deep(.el-form-item__label) {
-  font-weight: 600;
-  color: var(--foreground);
-}
-.gender-radio {
-  margin: 0 !important;
-  flex: 1;
-  display: flex !important;
-  justify-content: center;
-  border-radius: 12px !important;
-  transition: all 0.3s ease !important;
-}
-.gender-radio.is-checked {
-  background: rgba(var(--primary-rgb), 0.05);
-  transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(var(--primary-rgb), 0.1);
 }
 </style>

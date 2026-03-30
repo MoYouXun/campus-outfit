@@ -44,14 +44,15 @@ public class AiAssistantController {
      * 穿搭对话
      */
     @PostMapping("/chat")
-    public Result<String> chat(@RequestBody AiChatRequest request, HttpServletRequest httpServletRequest) {
+    public Result<Object> chat(@RequestBody AiChatRequest request, HttpServletRequest httpServletRequest) {
         Long userId = getUserId(httpServletRequest);
         if (userId == null) {
             return Result.fail("用户未登录或 Token 无效");
         }
 
         log.info("[AiController] 接收到对话请求, userId: {}, sessionId: {}", userId, request.getSessionId());
-        String result = aiAssistantService.chat(request.getSessionId(), request.getMessage(), userId);
+        // 强制路由到多模态+衣柜注入+重绘的增强对话方法
+        com.campus.outfit.vo.AiOutfitRecommendVO result = aiAssistantService.chatForOutfit(request, userId);
         return Result.success(result);
     }
 

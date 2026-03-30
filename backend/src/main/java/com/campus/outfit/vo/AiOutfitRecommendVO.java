@@ -28,6 +28,7 @@ public class AiOutfitRecommendVO implements Serializable {
 
     /**
      * 核心推荐搭配单品（包含生成的融合图）
+     * 【修复】：将单个对象改为 List 集合，以匹配大模型返回的 JSON 数组
      */
-    private RecommendationVO recommendations;
+    private List<RecommendationVO> recommendations;
 }

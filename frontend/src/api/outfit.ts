@@ -48,6 +48,7 @@ export interface PublishParams {
   temperatureRange?: string;
   status?: 'PUBLISHED' | 'PRIVATE' | 'DRAFT';
   topicId?: number | null;
+  aiAnalysis?: string;
 }
 
 export function publishOutfit(data: PublishParams) {

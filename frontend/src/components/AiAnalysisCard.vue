@@ -19,7 +19,9 @@ const publishing = ref(false)
 // 发布表单状态
 const publishForm = ref({
   title: '',
-  occasion: '日常'
+  occasion: '日常',
+  season: '',
+  temperatureRange: ''
 })
 
 onMounted(async () => {
@@ -32,7 +34,7 @@ onMounted(async () => {
 const handleUpload = async (data: any) => {
   uploading.value = true
   try {
-    const res = await uploadAndAnalyze([data.compressedFile])
+    const res: any = await uploadAndAnalyze([data.compressedFile])
     aiResult.value = {
       ...res,
       tempImage: data.base64Data
@@ -40,6 +42,8 @@ const handleUpload = async (data: any) => {
     // 初始化发布表单
     publishForm.value.title = '我的校园穿搭'
     publishForm.value.occasion = '日常'
+    publishForm.value.season = res.season
+    publishForm.value.temperatureRange = res.temperatureRange
     ElMessage.success('AI 分析完成')
   } catch (e) {
     ElMessage.error('分析失败')
@@ -68,6 +72,9 @@ const handlePublish = async (status: 'PUBLISHED' | 'PRIVATE') => {
       itemKeywords: aiResult.value.itemKeywords,
       topicId: selectedTopic.value,
       occasion: publishForm.value.occasion,
+      season: publishForm.value.season,
+      temperatureRange: publishForm.value.temperatureRange,
+      aiAnalysis: JSON.stringify(aiResult.value),
       status: status
     }
     await publishOutfit(data)

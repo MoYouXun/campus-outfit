@@ -1,12 +1,14 @@
 package com.campus.outfit.util;
 
 import com.campus.outfit.exception.BusinessException;
-import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import lombok.AllArgsConstructor;
+import lombok.Data;
+import lombok.NoArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
@@ -16,13 +18,14 @@ import org.springframework.web.client.RestTemplate;
 import org.springframework.web.client.ResourceAccessException;
 
 import java.util.*;
-import java.util.concurrent.TimeUnit;
 
+/**
+ * 豆包大模型网关工具类 - 无状态组件
+ */
 @Slf4j
 @Component
 public class DoubaoUtil {
 
-    private final StringRedisTemplate redisTemplate;
     private final ObjectMapper objectMapper;
     private final RestTemplate restTemplate;
 
@@ -32,88 +35,81 @@ public class DoubaoUtil {
     @Value("${api.doubao.endpoint-lite}")
     private String endpointId;
 
-    private static final String CONTEXT_KEY_PREFIX = "ai:context:";
-    private static final long EXPIRE_HOURS = 2;
-
-    public DoubaoUtil(StringRedisTemplate redisTemplate, ObjectMapper objectMapper) {
-        this.redisTemplate = redisTemplate;
+    public DoubaoUtil(ObjectMapper objectMapper) {
         this.objectMapper = objectMapper;
-        
+        // 使用原生 HTTP 引擎确保长耗时请求稳定性
         SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
-        factory.setConnectTimeout(40000); // 调大至 40s 以应对极端网络抖动
+        factory.setConnectTimeout(40000); 
         factory.setReadTimeout(120000);
         this.restTemplate = new RestTemplate(factory);
     }
 
-    public String chat(Long userId, String sessionId, String userInput) {
-        return chat(userId, sessionId, userInput, (List<String>) null);
+    /**
+     * 【内部 DTO】豆包/OpenAI 消息格式
+     */
+    @Data
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class DoubaoMessage {
+        private String role;
+        /**
+         * content 字段的多态实现：
+         * 1. 简单文本：String
+         * 2. 多模态内容：List<DoubaoContentPart>
+         */
+        private Object content;
     }
 
-    public String chat(Long userId, String sessionId, String userInput, String base64Image) {
-        List<String> images = base64Image != null ? Collections.singletonList(base64Image) : null;
-        return chat(userId, sessionId, userInput, images);
-    }
+    /**
+     * 【内部 DTO】多模态内容节点
+     */
+    @Data
+    @NoArgsConstructor
+    @AllArgsConstructor
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    public static class DoubaoContentPart {
+        private String type; // text 或 image_url
+        private String text;
+        private Map<String, String> image_url;
 
-    public String chat(Long userId, String sessionId, String userInput, List<String> contextBase64Images) {
-        log.info("[DoubaoUtil] 开始对话请求, sessionId: {}", sessionId);
-        String redisKey = CONTEXT_KEY_PREFIX + sessionId;
+        public static DoubaoContentPart text(String text) {
+            return new DoubaoContentPart("text", text, null);
+        }
 
-        try {
-            String historyJson = redisTemplate.opsForValue().get(redisKey);
-            List<Map<String, Object>> history;
-            if (historyJson == null) {
-                history = new ArrayList<>();
-                Map<String, Object> systemMsg = new HashMap<>();
-                systemMsg.put("role", "system");
-                systemMsg.put("content", "你是一位专业的校园穿搭顾问。请务必以 JSON 格式返回分析结果，包含字段：style, suggestions, recommendations (含 title, desc, image)。");
-                history.add(systemMsg);
-            } else {
-                history = objectMapper.readValue(historyJson, new TypeReference<List<Map<String, Object>>>() {});
-            }
-
-            Map<String, Object> userMsg = new HashMap<>();
-            userMsg.put("role", "user");
-            List<Map<String, Object>> contentList = new ArrayList<>();
-            Map<String, Object> textPart = new HashMap<>();
-            textPart.put("type", "text");
-            textPart.put("text", userInput);
-            contentList.add(textPart);
-
-            if (contextBase64Images != null) {
-                for (String src : contextBase64Images) {
-                    String formatted = resolveAndFormatImage(src);
-                    if (formatted != null) {
-                        Map<String, Object> imgPart = new HashMap<>();
-                        imgPart.put("type", "image_url");
-                        Map<String, String> urlMap = new HashMap<>();
-                        urlMap.put("url", formatted);
-                        imgPart.put("image_url", urlMap);
-                        contentList.add(imgPart);
-                    }
-                }
-            }
-            
-            userMsg.put("content", contentList);
-            history.add(userMsg);
-
-            String aiReply = callDoubaoApiWithRetry(history);
-
-            Map<String, Object> assistantMsg = new HashMap<>();
-            assistantMsg.put("role", "assistant");
-            assistantMsg.put("content", aiReply);
-            history.add(assistantMsg);
-
-            if (history.size() > 20) history = new ArrayList<>(history.subList(history.size() - 20, history.size()));
-            redisTemplate.opsForValue().set(redisKey, objectMapper.writeValueAsString(history), EXPIRE_HOURS, TimeUnit.HOURS);
-            return aiReply;
-
-        } catch (Exception e) {
-            log.error("[DoubaoUtil] 对话链路崩溃: {}", e.getMessage());
-            throw new BusinessException("AI 服务故障或超时: " + e.getMessage());
+        public static DoubaoContentPart image(String url) {
+            Map<String, String> urlMap = new HashMap<>();
+            urlMap.put("url", url);
+            return new DoubaoContentPart("image_url", null, urlMap);
         }
     }
 
-    private String resolveAndFormatImage(String imageSource) {
+    @Data
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class DoubaoChatRequest {
+        private String model;
+        private List<DoubaoMessage> messages;
+    }
+
+    /**
+     * 通用多模态交互接口 (无状态)
+     * @param messages 已由业务层拼装完毕的消息数组
+     * @return 响应 Content 文本
+     */
+    public String chatWithVision(List<DoubaoMessage> messages) {
+        log.info("[DoubaoUtil] 发起 AI 会话请求, messages.size: {}", (messages != null ? messages.size() : 0));
+        try {
+            return callDoubaoApiWithRetry(messages);
+        } catch (Exception e) {
+            log.error("[DoubaoUtil] 接口调用链路崩溃: {}", e.getMessage());
+            throw new BusinessException("AI 服务通讯异常: " + e.getMessage());
+        }
+    }
+
+    /**
+     * 【辅助工具】处理并标准化图片资源（支持 URL 或 Base64）
+     */
+    public String resolveAndFormatImage(String imageSource) {
         if (imageSource == null || imageSource.isEmpty()) return null;
         try {
             byte[] imageBytes = null;
@@ -134,35 +130,35 @@ public class DoubaoUtil {
                     .size(1024, 1024).outputFormat("jpg").outputQuality(0.7).toOutputStream(baos);
             return "data:image/jpeg;base64," + java.util.Base64.getEncoder().encodeToString(baos.toByteArray());
         } catch (Exception e) {
-            log.warn("[DoubaoUtil] 图片处理受阻: {}", e.getMessage());
+            log.warn("[DoubaoUtil] 素材预处理跳过: {}", e.getMessage());
         }
         return null;
     }
 
-    private String callDoubaoApiWithRetry(List<Map<String, Object>> messages) throws Exception {
+    private String callDoubaoApiWithRetry(List<DoubaoMessage> messages) throws Exception {
         int maxRetries = 3;
-        Exception lastException = new BusinessException("AI 服务调用重试失败");
+        Exception lastException = null;
         for (int i = 0; i < maxRetries; i++) {
             try {
                 return callDoubaoApi(messages);
             } catch (ResourceAccessException | BusinessException e) {
                 lastException = e;
-                log.warn("[DoubaoUtil] 第 {} 次调用 AI 失败, 正在重试...", i + 1);
+                log.warn("[DoubaoUtil] API 通讯抖动, 发起第 {} 次重试...", i + 1);
                 if (i < maxRetries - 1) Thread.sleep(1500);
             }
         }
-        throw lastException;
+        throw (lastException != null ? lastException : new BusinessException("AI 响应重试枯竭"));
     }
 
-    private String callDoubaoApi(List<Map<String, Object>> messages) throws Exception {
+    private String callDoubaoApi(List<DoubaoMessage> messages) throws Exception {
         String url = "https://ark.cn-beijing.volces.com/api/v3/chat/completions";
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_JSON);
         headers.setBearerAuth(doubaoKey);
-        Map<String, Object> body = new HashMap<>();
-        body.put("model", endpointId);
-        body.put("messages", messages);
-        HttpEntity<Map<String, Object>> entity = new HttpEntity<>(body, headers);
+        
+        DoubaoChatRequest requestBody = new DoubaoChatRequest(endpointId, messages);
+        HttpEntity<DoubaoChatRequest> entity = new HttpEntity<>(requestBody, headers);
+        
         String response = restTemplate.postForObject(url, entity, String.class);
         JsonNode root = objectMapper.readTree(response);
         if (root.has("error")) throw new BusinessException(root.path("error").path("message").asText());

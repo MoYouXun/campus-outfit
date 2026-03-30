@@ -6,8 +6,11 @@ import com.campus.outfit.exception.BusinessException;
 import com.campus.outfit.mapper.WardrobeItemMapper;
 import com.campus.outfit.service.AiAssistantService;
 import com.campus.outfit.util.DoubaoUtil;
+import com.campus.outfit.util.DoubaoUtil.DoubaoMessage;
+import com.campus.outfit.util.DoubaoUtil.DoubaoContentPart;
 import com.campus.outfit.util.SeedreamUtil;
 import com.campus.outfit.vo.AiOutfitRecommendVO;
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
@@ -22,6 +25,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.http.MediaType;
 
 import java.util.*;
+import java.util.concurrent.TimeUnit;
 import java.net.URI;
 
 @Slf4j
@@ -45,6 +49,9 @@ public class AiAssistantServiceImpl implements AiAssistantService {
 
     private final RestTemplate restTemplate = new RestTemplate();
 
+    private static final String CONTEXT_KEY_PREFIX = "ai:context:";
+    private static final long EXPIRE_HOURS = 2;
+
     @Override
     public String analyze(String mainBase64, String sessionId, Long userId) {
         log.info("[AiAssistant] 接收到分析请求, userId: {}, sessionId: {}", userId, sessionId);
@@ -53,41 +60,73 @@ public class AiAssistantServiceImpl implements AiAssistantService {
                 new LambdaQueryWrapper<WardrobeItem>().eq(WardrobeItem::getUserId, userId)
         );
         
-        List<String> contextBase64s = new ArrayList<>();
-        contextBase64s.add(mainBase64);
-
+        // 构造素材列表
+        List<String> rawImages = new ArrayList<>();
+        rawImages.add(mainBase64);
         if (items != null) {
             for (WardrobeItem item : items) {
-                if (item.getOriginalImageUrl() != null) {
-                    try {
-                        String b64 = downloadToBase64(item.getOriginalImageUrl());
-                        if (b64 != null) contextBase64s.add(b64);
-                    } catch (Exception e) {
-                        log.warn("[AiAssistant] 上下文单品图加载失败: {}", item.getId());
-                    }
-                }
+                if (item.getOriginalImageUrl() != null) rawImages.add(item.getOriginalImageUrl());
             }
         }
 
-        String prompt = "你是一位专业的校园穿搭顾问。请根据主图和我的衣柜图片，必须且只能推荐 1 套搭配。返回 JSON 字段：style, suggestions (数组), recommendations (数组，仅含 id, title, desc)。";
-        String aiJson = doubaoUtil.chat(userId, sessionId, prompt, contextBase64s);
+        // 构造消息列表
+        List<DoubaoMessage> messages = new ArrayList<>();
+        messages.add(new DoubaoMessage("system", "你是一位专业的校园穿搭顾问。请根据主图和我的衣柜图片，必须且只能推荐 1 套搭配。返回 JSON 字段：style, suggestions (数组), recommendations (数组，仅含 id, title, desc)。"));
         
+        DoubaoMessage userMsg = new DoubaoMessage();
+        userMsg.setRole("user");
+        List<DoubaoContentPart> parts = new ArrayList<>();
+        parts.add(DoubaoContentPart.text("这是我的照片和衣柜，请提供分析与建议。"));
+        for (String src : rawImages) {
+            String fmt = doubaoUtil.resolveAndFormatImage(src);
+            if (fmt != null) parts.add(DoubaoContentPart.image(fmt));
+        }
+        userMsg.setContent(parts);
+        messages.add(userMsg);
+
+        String aiJson = doubaoUtil.chatWithVision(messages);
         return enhanceJsonWithImage(aiJson, mainBase64, userId, items);
     }
 
     @Override
     public AiOutfitRecommendVO chatForOutfit(AiChatRequest request, Long userId) {
-        log.info("[AiAssistant] 开始多轮穿搭聊天. userId: {}, sessionId: {}", userId, request.getSessionId());
+        log.info("[AiAssistant] 开始多轮穿搭对话. userId: {}, sessionId: {}", userId, request.getSessionId());
 
-        // 1. 构造强制 JSON 输出的 System 指令
-        String systemInstruction = "你是一个校园穿搭AI助手。你必须严格且仅输出JSON格式，严禁包含任何Markdown标记或其他文字。" +
-                "JSON结构必须为：{\"style\":\"...\",\"suggestions\":[\"...\"],\"recommendations\":{\"title\":\"...\",\"desc\":\"...\",\"image\":\"...\"}}";
+        String redisKey = CONTEXT_KEY_PREFIX + request.getSessionId();
+        List<DoubaoMessage> history = loadHistory(redisKey);
 
-        // 2. 调用 DoubaoUtil (工具类内部已实现 Redis 历史维护逻辑)
-        String userInputWithPrompt = systemInstruction + "\n用户当前输入: " + request.getMessage();
-        String aiResponse = doubaoUtil.chat(userId, request.getSessionId(), userInputWithPrompt);
+        // 1. 初始化/注入 System Prompt
+        if (history.isEmpty()) {
+            String systemInstruction = "你是一个支持视觉分析的AI穿搭助手。你必须严格且仅输出JSON格式，严禁包含任何Markdown标记或其他文字。" +
+                    "如果用户附带了图片并提出修改要求（如换颜色/换单品），你必须观察并保留图片中未被要求修改的原始单品和风格，仅替换要求的部分。" +
+                    "JSON结构必须为：{\"style\":\"...\",\"suggestions\":[\"...\"],\"recommendations\":{\"title\":\"...\",\"desc\":\"...\",\"image\":\"...\"}}";
+            history.add(new DoubaoMessage("system", systemInstruction));
+        }
 
-        // 3. 清理结果并尝试解析
+        // 2. 构造当前轮次用户消息 (多模态适配)
+        DoubaoMessage userMsg = new DoubaoMessage();
+        userMsg.setRole("user");
+        if (request.getImageUrls() == null || request.getImageUrls().isEmpty()) {
+            userMsg.setContent(request.getMessage());
+        } else {
+            List<DoubaoContentPart> parts = new ArrayList<>();
+            parts.add(DoubaoContentPart.text(request.getMessage()));
+            for (String url : request.getImageUrls()) {
+                String fmt = doubaoUtil.resolveAndFormatImage(url);
+                if (fmt != null) parts.add(DoubaoContentPart.image(fmt));
+            }
+            userMsg.setContent(parts);
+        }
+        history.add(userMsg);
+
+        // 3. 调用 AI 网关
+        String aiResponse = doubaoUtil.chatWithVision(history);
+
+        // 4. 更新历史与持久化
+        history.add(new DoubaoMessage("assistant", aiResponse));
+        saveHistory(redisKey, history);
+
+        // 5. 响应解析
         try {
             String cleanedJson = cleanJsonString(aiResponse);
             return objectMapper.readValue(cleanedJson, AiOutfitRecommendVO.class);
@@ -97,9 +136,31 @@ public class AiAssistantServiceImpl implements AiAssistantService {
         }
     }
 
+    private List<DoubaoMessage> loadHistory(String key) {
+        try {
+            String json = redisTemplate.opsForValue().get(key);
+            if (json == null) return new ArrayList<>();
+            return objectMapper.readValue(json, new TypeReference<List<DoubaoMessage>>() {});
+        } catch (Exception e) {
+            log.warn("[AiAssistant] 历史加载失败，重置会话: {}", e.getMessage());
+            return new ArrayList<>();
+        }
+    }
+
+    private void saveHistory(String key, List<DoubaoMessage> history) {
+        try {
+            // 对话截断防御 (保留最近 20 轮)
+            if (history.size() > 20) {
+                history = new ArrayList<>(history.subList(history.size() - 20, history.size()));
+            }
+            redisTemplate.opsForValue().set(key, objectMapper.writeValueAsString(history), EXPIRE_HOURS, TimeUnit.HOURS);
+        } catch (Exception e) {
+            log.error("[AiAssistant] 历史保存失败: {}", e.getMessage());
+        }
+    }
+
     private String cleanJsonString(String raw) {
         if (raw == null) return "{}";
-        // 移除 Markdown 代码块标记 ```json ... ```
         String cleaned = raw.trim();
         if (cleaned.startsWith("```")) {
             cleaned = cleaned.replaceAll("^```(json)?", "").replaceAll("```$", "").trim();
@@ -140,10 +201,7 @@ public class AiAssistantServiceImpl implements AiAssistantService {
                         .findFirst()
                         .ifPresent(i -> {
                             String b64 = downloadToBase64(i.getOriginalImageUrl());
-                            if (b64 != null) {
-                                log.info("[AiAssistant] 命中推荐单品 ID: {}, 加载为融合素材", itemId);
-                                fusionBase64s.add(b64);
-                            }
+                            if (b64 != null) fusionBase64s.add(b64);
                         });
 
                 String drawPrompt = "将这些衣服单品进行搭配，生成一套完整的全身的穿搭效果图。保持衣服的原貌和特征，光线明亮，背景简洁，适合大学生日常穿搭。";
@@ -152,7 +210,7 @@ public class AiAssistantServiceImpl implements AiAssistantService {
             }
             return objectMapper.writeValueAsString(rootNode);
         } catch (Exception e) {
-            log.error("[AiAssistant] JSON 增强逻辑异常: {}", e.getMessage());
+            log.error("[AiAssistant] JSON 增强异常: {}", e.getMessage());
             return aiJson;
         }
     }
@@ -160,21 +218,28 @@ public class AiAssistantServiceImpl implements AiAssistantService {
     private String downloadToBase64(String imageUrl) {
         try {
             ResponseEntity<byte[]> response = restTemplate.getForEntity(URI.create(imageUrl), byte[].class);
-            MediaType contentType = response.getHeaders().getContentType();
-            if (contentType != null && !contentType.getType().toLowerCase().contains("image")) {
-                return null;
-            }
             if (response.getStatusCode().is2xxSuccessful() && response.getBody() != null) {
                 return "data:image/jpeg;base64," + Base64.getEncoder().encodeToString(response.getBody());
             }
         } catch (Exception e) {
-             log.warn("[AiAssistant] 资源下载跳过: {}", e.getMessage());
+             log.warn("[AiAssistant] 下载跳过: {}", e.getMessage());
         }
         return null;
     }
 
     @Override
     public String chat(String message, String sessionId, Long userId) {
-        return doubaoUtil.chat(userId, sessionId, message);
+        String redisKey = CONTEXT_KEY_PREFIX + sessionId;
+        List<DoubaoMessage> history = loadHistory(redisKey);
+
+        if (history.isEmpty()) {
+            history.add(new DoubaoMessage("system", "你是一位专业的校园穿搭顾问。"));
+        }
+
+        history.add(new DoubaoMessage("user", message));
+        String reply = doubaoUtil.chatWithVision(history);
+        history.add(new DoubaoMessage("assistant", reply));
+        saveHistory(redisKey, history);
+        return reply;
     }
 }

@@ -4,7 +4,10 @@ import com.campus.outfit.dto.AiAnalysisResult;
 import com.campus.outfit.entity.WardrobeItem;
 import com.campus.outfit.service.AiService;
 import com.campus.outfit.util.DoubaoUtil;
+import com.campus.outfit.util.DoubaoUtil.DoubaoMessage;
+import com.campus.outfit.util.DoubaoUtil.DoubaoContentPart;
 import com.campus.outfit.util.SeedreamUtil;
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.volcengine.service.visual.IVisualService;
 import com.volcengine.service.visual.impl.VisualServiceImpl;
@@ -12,6 +15,7 @@ import jakarta.annotation.PostConstruct;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
@@ -19,6 +23,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
 
 import java.util.*;
+import java.util.concurrent.TimeUnit;
 
 @Slf4j
 @Service
@@ -38,12 +43,18 @@ public class AiServiceImpl implements AiService {
     @Autowired
     private SeedreamUtil seedreamUtil;
 
+    @Autowired
+    private StringRedisTemplate redisTemplate;
+
     private final RestTemplate restTemplate;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
+    private static final String CONTEXT_KEY_PREFIX = "ai:context:";
+    private static final long EXPIRE_HOURS = 2;
+
     public AiServiceImpl() {
         SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
-        factory.setConnectTimeout(40000); // 同步调大超时至 40s
+        factory.setConnectTimeout(40000); 
         factory.setReadTimeout(60000);
         this.restTemplate = new RestTemplate(factory);
     }
@@ -60,7 +71,19 @@ public class AiServiceImpl implements AiService {
     public AiAnalysisResult analyzeOutfit(byte[] imageBytes) {
         String base64Image = Base64.getEncoder().encodeToString(imageBytes);
         try {
-            String aiResponse = doubaoUtil.chat(0L, "analysis", "分析穿搭JSON", "data:image/jpeg;base64," + base64Image);
+            List<DoubaoMessage> messages = new ArrayList<>();
+            messages.add(new DoubaoMessage("system", "你是一个穿搭分析助手。请输出JSON格式分析结果。"));
+            
+            DoubaoMessage userMsg = new DoubaoMessage();
+            userMsg.setRole("user");
+            List<DoubaoContentPart> parts = new ArrayList<>();
+            parts.add(DoubaoContentPart.text("分析穿搭JSON"));
+            String fmt = doubaoUtil.resolveAndFormatImage("data:image/jpeg;base64," + base64Image);
+            if (fmt != null) parts.add(DoubaoContentPart.image(fmt));
+            userMsg.setContent(parts);
+            messages.add(userMsg);
+
+            String aiResponse = doubaoUtil.chatWithVision(messages);
             return objectMapper.readValue(extractJson(aiResponse), AiAnalysisResult.class);
         } catch (Exception e) {
             log.error("分析失败: {}", e.getMessage());
@@ -68,50 +91,77 @@ public class AiServiceImpl implements AiService {
         }
     }
 
-    private byte[] downloadImageBytes(String imageUrl) {
-        try {
-            ResponseEntity<byte[]> response = restTemplate.getForEntity(java.net.URI.create(imageUrl), byte[].class);
-            MediaType contentType = response.getHeaders().getContentType();
-            if (contentType != null && !contentType.getType().toLowerCase().contains("image")) {
-                log.warn("[AI Service] 跳过非图片响应: {}", imageUrl);
-                return null;
-            }
-            if (response.getStatusCode().is2xxSuccessful() && response.getBody() != null) {
-                return response.getBody();
-            }
-            return null;
-        } catch (Exception e) {
-            log.warn("[AI Service] 下载图片中断: {}", e.getMessage());
-            return null; 
-        }
+    @Override
+    public String analyzePortraitForTryOn(String base64Image) {
+        List<DoubaoMessage> messages = new ArrayList<>();
+        messages.add(new DoubaoMessage("system", "审核模特底图。JSON: isSuitable, reason。"));
+        
+        DoubaoMessage userMsg = new DoubaoMessage();
+        userMsg.setRole("user");
+        List<DoubaoContentPart> parts = new ArrayList<>();
+        parts.add(DoubaoContentPart.text("审核此模特图"));
+        String fmt = doubaoUtil.resolveAndFormatImage(base64Image.startsWith("data:") ? base64Image : "data:image/jpeg;base64," + base64Image);
+        if (fmt != null) parts.add(DoubaoContentPart.image(fmt));
+        userMsg.setContent(parts);
+        messages.add(userMsg);
+
+        return extractJson(doubaoUtil.chatWithVision(messages));
     }
 
     @Override
     public String generateTryOnImage(String personImageUrl, String outfitImageUrl) {
-        throw new UnsupportedOperationException();
+        // 目前由 DressingDiffusionV2 (Seedream) 逻辑接管
+        log.info("[AI Service] 尝试进行虚拟试衣...");
+        List<String> images = new ArrayList<>();
+        images.add(personImageUrl);
+        images.add(outfitImageUrl);
+        return seedreamUtil.generateImageFromMultipleBase64("基于提供的素材生成试衣效果", images);
     }
 
     @Override
     public String analyzeOutfitWithWardrobe(String base64Image, Long userId, String sessionId, List<WardrobeItem> wardrobeItems) {
-        log.info("[AI Service] 全量分析中...");
-        String prompt = "分析主图建议搭配。JSON: style, items, occasion, suggestions, recommendations (含 id, reason)。";
-        List<String> contextImages = new ArrayList<>();
-        contextImages.add(base64Image.startsWith("data:") ? base64Image : "data:image/jpeg;base64," + base64Image);
+        String redisKey = CONTEXT_KEY_PREFIX + sessionId;
+        List<DoubaoMessage> messages = new ArrayList<>();
+        messages.add(new DoubaoMessage("system", "分析主图建议搭配。JSON: style, items, occasion, suggestions, recommendations (含 id, reason)。"));
+        
+        DoubaoMessage userMsg = new DoubaoMessage();
+        userMsg.setRole("user");
+        List<DoubaoContentPart> parts = new ArrayList<>();
+        parts.add(DoubaoContentPart.text("基于这些图片进行穿搭分析"));
+        
+        String mainFmt = doubaoUtil.resolveAndFormatImage(base64Image.startsWith("data:") ? base64Image : "data:image/jpeg;base64," + base64Image);
+        if (mainFmt != null) parts.add(DoubaoContentPart.image(mainFmt));
         
         if (wardrobeItems != null) {
             for (WardrobeItem item : wardrobeItems) {
                 if (item.getOriginalImageUrl() != null) {
-                    byte[] bytes = downloadImageBytes(item.getOriginalImageUrl());
-                    if (bytes != null) contextImages.add("data:image/jpeg;base64," + Base64.getEncoder().encodeToString(bytes));
+                    String itemFmt = doubaoUtil.resolveAndFormatImage(item.getOriginalImageUrl());
+                    if (itemFmt != null) parts.add(DoubaoContentPart.image(itemFmt));
                 }
             }
         }
-        return extractJson(doubaoUtil.chat(userId, sessionId, prompt, contextImages));
+        userMsg.setContent(parts);
+        messages.add(userMsg);
+
+        String reply = doubaoUtil.chatWithVision(messages);
+        saveHistory(redisKey, messages); 
+        return extractJson(reply);
     }
 
     @Override
     public String chatWithWardrobeContext(String sessionId, String message, List<WardrobeItem> wardrobeItems) {
-        return doubaoUtil.chat(0L, sessionId, message);
+        String redisKey = CONTEXT_KEY_PREFIX + sessionId;
+        List<DoubaoMessage> history = loadHistory(redisKey);
+        
+        if (history.isEmpty()) {
+            history.add(new DoubaoMessage("system", "你是一位专业的校园穿搭顾问。"));
+        }
+        
+        history.add(new DoubaoMessage("user", message));
+        String reply = doubaoUtil.chatWithVision(history);
+        history.add(new DoubaoMessage("assistant", reply));
+        saveHistory(redisKey, history);
+        return reply;
     }
 
     @Override
@@ -121,19 +171,45 @@ public class AiServiceImpl implements AiService {
 
     @Override
     public String analyzeWardrobeItem(String base64Image) {
-        String prompt = "鉴定单件属性。JSON: isSingleItem, categoryMain, categorySub, color, season, material, reason。";
-        return extractJson(doubaoUtil.chat(0L, "wardrobe", prompt, base64Image));
-    }
+        List<DoubaoMessage> messages = new ArrayList<>();
+        messages.add(new DoubaoMessage("system", "鉴定单件属性。JSON: isSingleItem, categoryMain, categorySub, color, season, material, reason。"));
+        
+        DoubaoMessage userMsg = new DoubaoMessage();
+        userMsg.setRole("user");
+        List<DoubaoContentPart> parts = new ArrayList<>();
+        parts.add(DoubaoContentPart.text("请鉴定此单品"));
+        String fmt = doubaoUtil.resolveAndFormatImage(base64Image.startsWith("data:") ? base64Image : "data:image/jpeg;base64," + base64Image);
+        if (fmt != null) parts.add(DoubaoContentPart.image(fmt));
+        userMsg.setContent(parts);
+        messages.add(userMsg);
 
-    @Override
-    public String analyzePortraitForTryOn(String base64Image) {
-        String prompt = "审核模特底图。JSON: isSuitable, reason。";
-        return extractJson(doubaoUtil.chat(0L, "portrait", prompt, base64Image));
+        return extractJson(doubaoUtil.chatWithVision(messages));
     }
 
     @Override
     public String generateImageFromMultipleBase64(String prompt, List<String> base64Images) {
         return seedreamUtil.generateImageFromMultipleBase64(prompt, base64Images);
+    }
+
+    private List<DoubaoMessage> loadHistory(String key) {
+        try {
+            String json = redisTemplate.opsForValue().get(key);
+            if (json == null) return new ArrayList<>();
+            return objectMapper.readValue(json, new TypeReference<List<DoubaoMessage>>() {});
+        } catch (Exception e) {
+            return new ArrayList<>();
+        }
+    }
+
+    private void saveHistory(String key, List<DoubaoMessage> history) {
+        try {
+            if (history.size() > 20) {
+                history = new ArrayList<>(history.subList(history.size() - 20, history.size()));
+            }
+            redisTemplate.opsForValue().set(key, objectMapper.writeValueAsString(history), EXPIRE_HOURS, TimeUnit.HOURS);
+        } catch (Exception e) {
+            log.error("[AI Service] 历史保存失败: {}", e.getMessage());
+        }
     }
 
     private String extractJson(String content) {

@@ -5,6 +5,7 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 import java.io.Serializable;
+import java.util.List;
 
 /**
  * AI 穿搭对话请求 DTO
@@ -25,4 +26,10 @@ public class AiChatRequest implements Serializable {
      * 用于在服务端追踪多轮对话的上下文状态
      */
     private String sessionId;
+
+    /**
+     * 用户对话中引用的图片 URL 列表
+     * 可包含多张穿搭参考图
+     */
+    private List<String> imageUrls;
 }

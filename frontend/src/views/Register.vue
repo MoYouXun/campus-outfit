@@ -73,12 +73,12 @@ const handleRegister = () => {
         
         <el-form-item prop="gender" label="您的性别" class="gender-item">
           <el-radio-group v-model="form.gender" class="w-full flex justify-around">
-            <el-radio :label="1" size="large" border class="gender-radio">
+            <el-radio :value="1" size="large" border class="gender-radio">
               <div class="flex items-center gap-2">
                 <span class="text-blue-500 font-bold">♂</span> 男
               </div>
             </el-radio>
-            <el-radio :label="2" size="large" border class="gender-radio male-border">
+            <el-radio :value="2" size="large" border class="gender-radio male-border">
               <div class="flex items-center gap-2">
                 <span class="text-pink-500 font-bold">♀</span> 女
               </div>

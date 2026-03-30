@@ -10,13 +10,13 @@ public class AiAnalysisResult {
     private List<String> itemKeywords;
     private String suggestion;
 
-    @com.fasterxml.jackson.annotation.JsonAlias({" season\, \season_tag\})
- private String season;
+    @com.fasterxml.jackson.annotation.JsonAlias({"season", "season_tag"})
+    private String season;
 
- @com.fasterxml.jackson.annotation.JsonAlias({\temperatureRange\, \temperature_range\, \temperature\})
- private String temperatureRange;
+    @com.fasterxml.jackson.annotation.JsonAlias({"temperatureRange", "temperature_range", "temperature"})
+    private String temperatureRange;
 
- private Integer gender;
+    private Integer gender;
 
- private List<String> imageUrls;
+    private List<String> imageUrls;
 }

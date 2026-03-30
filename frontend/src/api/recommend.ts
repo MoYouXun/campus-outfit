@@ -15,7 +15,7 @@ export interface LocationParams {
 
 export interface SeasonParams extends RecommendPageParams, LocationParams {}
 
-export interface OccasionParams extends RecommendPageParams {
+export interface OccasionParams extends RecommendPageParams, LocationParams {
   occasion: string
 }
 

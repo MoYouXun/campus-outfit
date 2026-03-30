@@ -107,7 +107,7 @@ public class AiAssistantServiceImpl implements AiAssistantService {
         List<WardrobeItem> wardrobeItems = wardrobeItemMapper.selectList(
                 new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<WardrobeItem>().eq(WardrobeItem::getUserId, userId)
         );
-        
+
         // 2. 刷新强化 System Prompt，强制进行衣柜替换逻辑
         String systemInstruction = "你是一个支持视觉分析的AI穿搭助手。你必须严格且仅输出JSON格式，严禁包含任何Markdown标记或其他文字。" +
                 "如果用户提出修改要求（如换颜色/换单品），你必须从下面提供的衣柜列表中选择合适的单品进行替换搭配。" +

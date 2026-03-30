@@ -6,16 +6,19 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Service;
+import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.web.client.RestTemplate;
+import lombok.extern.slf4j.Slf4j;
 
 import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
 
+@Slf4j
 @Service
 public class WeatherServiceImpl implements WeatherService {
 
-    private final RestTemplate restTemplate = new RestTemplate();
+    private final RestTemplate restTemplate;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     // Redis 键前缀
@@ -42,6 +45,13 @@ public class WeatherServiceImpl implements WeatherService {
         CITY_COORD_MAP.put("长沙", new double[]{28.23, 112.93});
     }
 
+    public WeatherServiceImpl() {
+        SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
+        factory.setConnectTimeout(3000);
+        factory.setReadTimeout(3000);
+        this.restTemplate = new RestTemplate(factory);
+    }
+
     @Override
     public WeatherInfoVO getWeatherAndDressIndex(String city) {
         double[] coords = CITY_COORD_MAP.getOrDefault(city, CITY_COORD_MAP.get("北京"));
@@ -61,15 +71,17 @@ public class WeatherServiceImpl implements WeatherService {
         try {
             Object cached = redisTemplate.opsForValue().get(cacheKey);
             if (cached != null) {
-                // 如果是 String 序列化，则反序列化回 VO
+                WeatherInfoVO cachedVO;
                 if (cached instanceof WeatherInfoVO) {
-                    return (WeatherInfoVO) cached;
+                    cachedVO = (WeatherInfoVO) cached;
+                } else {
+                    cachedVO = objectMapper.convertValue(cached, WeatherInfoVO.class);
                 }
-                // 如果 RedisTemplate 使用了 JSON 序列化器，通过 ObjectMapper 转换
-                return objectMapper.convertValue(cached, WeatherInfoVO.class);
+                cachedVO.setLocation(locationName);
+                return cachedVO;
             }
         } catch (Exception e) {
-            System.err.println("[WeatherCache] Redis 读取失败，降到直接请求: " + e.getMessage());
+            log.warn("[WeatherCache] Redis 读取失败，降到直接请求: {}", e.getMessage());
         }
 
         // 2. 缓存未命中，请求 Open-Meteo API
@@ -77,9 +89,15 @@ public class WeatherServiceImpl implements WeatherService {
 
         // 3. 写入 Redis 缓存，TTL 30 分钟
         try {
-            redisTemplate.opsForValue().set(cacheKey, result, CACHE_TTL_MINUTES, TimeUnit.MINUTES);
+            WeatherInfoVO cacheObj = WeatherInfoVO.builder()
+                    .temperature(result.getTemperature())
+                    .weatherDesc(result.getWeatherDesc())
+                    .dressIndex(result.getDressIndex())
+                    .suggestion(result.getSuggestion())
+                    .build();
+            redisTemplate.opsForValue().set(cacheKey, cacheObj, CACHE_TTL_MINUTES, TimeUnit.MINUTES);
         } catch (Exception e) {
-            System.err.println("[WeatherCache] Redis 写入失败，继续使用直接结果: " + e.getMessage());
+            log.warn("[WeatherCache] Redis 写入失败: {}", e.getMessage());
         }
 
         return result;
@@ -110,7 +128,7 @@ public class WeatherServiceImpl implements WeatherService {
                         .build();
             }
         } catch (Exception e) {
-            e.printStackTrace();
+            log.error("[WeatherCache] 获取外部天气 API 异常 (lat:{}, lon:{}): {}", lat, lon, e.getMessage());
         }
         return fallbackMock(locationName);
     }

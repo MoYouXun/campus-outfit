@@ -111,26 +111,79 @@ public class RecommendServiceImpl implements RecommendService {
     }
 
     @Override
-    public IPage<OutfitVO> recommendByOccasion(String occasion, int page, int size, Long currentUserId) {
-        // 先尝试精确匹配 occasion 字段
-        LambdaQueryWrapper<Outfit> wrapper = new LambdaQueryWrapper<Outfit>()
-                .eq(Outfit::getIsPublic, true)
-                .eq(Outfit::getStatus, "PUBLISHED")
-                .like(Outfit::getOccasion, occasion)
-                .orderByDesc(Outfit::getLikeCount);
-
-        IPage<Outfit> outfitPage = outfitService.page(new Page<>(page, size), wrapper);
-
-        // 如果没有结果，回退到展示所有已发布穿搭
-        if (outfitPage.getRecords().isEmpty()) {
-            LambdaQueryWrapper<Outfit> fallbackWrapper = new LambdaQueryWrapper<Outfit>()
-                    .eq(Outfit::getIsPublic, true)
-                    .eq(Outfit::getStatus, "PUBLISHED")
-                    .orderByDesc(Outfit::getLikeCount);
-            outfitPage = outfitService.page(new Page<>(page, size), fallbackWrapper);
+    public IPage<OutfitVO> recommendByOccasion(String occasion, Double latitude, Double longitude, int page, int size, Long currentUserId) {
+        int temp = 20;
+        try {
+            if (latitude != null && longitude != null) {
+                WeatherInfoVO weather = weatherService.getWeatherAndDressIndexByLocation(latitude, longitude);
+                if (weather != null && weather.getTemperature() != null) {
+                    Matcher matcher = Pattern.compile("-?\\d+").matcher(weather.getTemperature());
+                    if (matcher.find()) {
+                        temp = Integer.parseInt(matcher.group());
+                    }
+                }
+            }
+        } catch (Exception e) {
+            // 忽略天气获取失败，使用默认温度
         }
 
-        return convertPage(outfitPage, "为您推荐适合 " + occasion + " 场景的精选穿搭", currentUserId);
+        LambdaQueryWrapper<Outfit> exactWrapper = new LambdaQueryWrapper<Outfit>()
+                .eq(Outfit::getIsPublic, true).eq(Outfit::getStatus, "PUBLISHED");
+        
+        if (occasion != null && occasion.contains("/")) {
+            String[] keywords = occasion.split("/");
+            exactWrapper.and(w -> {
+                boolean first = true;
+                for (String kw : keywords) {
+                    if (first) { w.like(Outfit::getOccasion, kw); first = false; } 
+                    else { w.or().like(Outfit::getOccasion, kw); }
+                }
+            });
+        } else {
+            exactWrapper.like(Outfit::getOccasion, occasion);
+        }
+
+        if (temp < 10) {
+            exactWrapper.and(w -> w.like(Outfit::getTemperatureRange, "冷").or().like(Outfit::getSeason, "冬"));
+        } else if (temp < 20) {
+            exactWrapper.and(w -> w.like(Outfit::getTemperatureRange, "凉").or().like(Outfit::getTemperatureRange, "春秋").or().like(Outfit::getSeason, "春").or().like(Outfit::getSeason, "秋"));
+        } else {
+            exactWrapper.and(w -> w.like(Outfit::getTemperatureRange, "热").or().like(Outfit::getTemperatureRange, "夏").or().like(Outfit::getSeason, "夏"));
+        }
+        exactWrapper.orderByDesc(Outfit::getLikeCount);
+
+        IPage<Outfit> outfitPage = outfitService.page(new Page<>(page, size), exactWrapper);
+        String reason = "为您精选适合 " + occasion + " 的当季搭配";
+
+        if (outfitPage.getRecords().isEmpty()) {
+            LambdaQueryWrapper<Outfit> occasionWrapper = new LambdaQueryWrapper<Outfit>()
+                    .eq(Outfit::getIsPublic, true).eq(Outfit::getStatus, "PUBLISHED");
+            if (occasion != null && occasion.contains("/")) {
+                String[] keywords = occasion.split("/");
+                occasionWrapper.and(w -> {
+                    boolean first = true;
+                    for (String kw : keywords) {
+                        if (first) { w.like(Outfit::getOccasion, kw); first = false; } 
+                        else { w.or().like(Outfit::getOccasion, kw); }
+                    }
+                });
+            } else {
+                occasionWrapper.like(Outfit::getOccasion, occasion);
+            }
+            occasionWrapper.orderByDesc(Outfit::getLikeCount);
+            outfitPage = outfitService.page(new Page<>(page, size), occasionWrapper);
+            reason = "为您精选适合 " + occasion + " 的高赞搭配";
+        }
+
+        if (outfitPage.getRecords().isEmpty()) {
+            LambdaQueryWrapper<Outfit> fallbackWrapper = new LambdaQueryWrapper<Outfit>()
+                    .eq(Outfit::getIsPublic, true).eq(Outfit::getStatus, "PUBLISHED")
+                    .orderByDesc(Outfit::getLikeCount);
+            outfitPage = outfitService.page(new Page<>(page, size), fallbackWrapper);
+            reason = "正在为您寻找更多热门穿搭，不妨先看看这些";
+        }
+
+        return convertPage(outfitPage, reason, currentUserId);
     }
 
     @Override

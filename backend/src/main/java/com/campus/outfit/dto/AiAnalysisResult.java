@@ -5,9 +5,14 @@ import java.util.List;
 
 @Data
 public class AiAnalysisResult {
-    private List<String> styleTags;      // 风格标签
-    private List<String> colorTags;      // 颜色标签
-    private List<String> itemKeywords;   // 单品关键词
-    private String proportionSuggestion; // 穿搭/比例建议
-    private List<String> imageUrls;      // 图片在 MinIO 中的访问地址
+    private List<String> styleTags;
+    private List<String> colorTags;
+    private List<String> itemKeywords;
+    private String suggestion;
+
+    // 【修改点 2】新增季节和温度字段接收 AI 的推断结果
+    private String season;
+    private String temperatureRange;
+
+    private List<String> imageUrls;
 }

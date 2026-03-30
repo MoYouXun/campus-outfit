@@ -72,11 +72,13 @@ public class RecommendController {
     @GetMapping("/occasion")
     public Result<IPage<OutfitVO>> recommendByOccasion(
             @RequestParam String occasion, 
+            @RequestParam(required = false) Double latitude,
+            @RequestParam(required = false) Double longitude,
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "20") int size,
             @RequestParam(required = false) Long currentUserId) {
         try {
-            return Result.success(recommendService.recommendByOccasion(occasion, page, size, currentUserId));
+            return Result.success(recommendService.recommendByOccasion(occasion, latitude, longitude, page, size, currentUserId));
         } catch (Exception e) {
             log.error("获取场合推荐失败", e);
             return Result.fail("获取推荐失败");

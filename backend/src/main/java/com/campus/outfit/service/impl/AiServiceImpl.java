@@ -72,12 +72,19 @@ public class AiServiceImpl implements AiService {
         String base64Image = Base64.getEncoder().encodeToString(imageBytes);
         try {
             List<DoubaoMessage> messages = new ArrayList<>();
-            messages.add(new DoubaoMessage("system", "你是一个穿搭分析助手。请输出JSON格式分析结果。"));
-            
+            // 【修改点 1】增强系统提示词，明确规则和字段要求
+            String systemPrompt = "你是一个专业的校园穿搭分析助手。请严格输出JSON格式的分析结果。" +
+                    "请务必根据图中衣物的材质和类型（例如：羽绒服/厚毛衣代表冬季，短袖/短裤代表夏季，长袖衬衫/薄风衣代表春秋）推断并严格返回以下字段：\n" +
+                    "1. \"season\": 适合的季节（仅限输出：'春', '夏', '秋', '冬', '春秋'）；\n" +
+                    "2. \"temperatureRange\": 适合的温度感受（仅限输出：'冷', '凉', '舒适', '热'）；\n" +
+                    "3. 其他字段需包含：styleTags(数组), colorTags(数组), itemKeywords(数组), suggestion(字符串)。";
+
+            messages.add(new DoubaoMessage("system", systemPrompt));
+
             DoubaoMessage userMsg = new DoubaoMessage();
             userMsg.setRole("user");
             List<DoubaoContentPart> parts = new ArrayList<>();
-            parts.add(DoubaoContentPart.text("分析穿搭JSON"));
+            parts.add(DoubaoContentPart.text("请分析这张穿搭图片的风格、单品，并推断适合的季节和温度。"));
             String fmt = doubaoUtil.resolveAndFormatImage("data:image/jpeg;base64," + base64Image);
             if (fmt != null) parts.add(DoubaoContentPart.image(fmt));
             userMsg.setContent(parts);

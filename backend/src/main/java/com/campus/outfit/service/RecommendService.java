@@ -12,7 +12,7 @@ public interface RecommendService {
     /**
      * 场合推荐
      */
-    IPage<OutfitVO> recommendByOccasion(String occasion, int page, int size, Long currentUserId);
+    IPage<OutfitVO> recommendByOccasion(String occasion, Double latitude, Double longitude, int page, int size, Long currentUserId);
 
     /**
      * 风格推荐（基于用户偏好）

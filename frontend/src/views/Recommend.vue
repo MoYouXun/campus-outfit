@@ -225,7 +225,14 @@ const loadData = async (reset = true) => {
       }
       res = await getRecommendBySeason(params)
     } else if (activeTab.value === 'occasion') {
-      res = await getRecommendByOccasion({ ...commonParams, occasion: activeOccasion.value })
+      const params: any = { ...commonParams, occasion: activeOccasion.value }
+      if (userLocation.value.latitude && userLocation.value.longitude) {
+        params.latitude = userLocation.value.latitude
+        params.longitude = userLocation.value.longitude
+      } else {
+        params.city = city.value
+      }
+      res = await getRecommendByOccasion(params)
     } else if (activeTab.value === 'style') {
       res = await getRecommendByStyle(commonParams)
     }

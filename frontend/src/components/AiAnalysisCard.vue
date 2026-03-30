@@ -16,6 +16,12 @@ const aiResult = ref<any>(null)
 const uploading = ref(false)
 const publishing = ref(false)
 
+// 发布表单状态
+const publishForm = ref({
+  title: '',
+  occasion: '日常'
+})
+
 onMounted(async () => {
   try {
     const res: any = await getHotTopics()
@@ -31,6 +37,9 @@ const handleUpload = async (data: any) => {
       ...res,
       tempImage: data.base64Data
     }
+    // 初始化发布表单
+    publishForm.value.title = '我的校园穿搭'
+    publishForm.value.occasion = '日常'
     ElMessage.success('AI 分析完成')
   } catch (e) {
     ElMessage.error('分析失败')
@@ -51,13 +60,14 @@ const handlePublish = async (status: 'PUBLISHED' | 'PRIVATE') => {
   publishing.value = true
   try {
     const data = {
-      title: '我的校园穿搭',
+      title: publishForm.value.title || '我的校园穿搭',
       description: aiResult.value.proportionSuggestion,
       imageUrls: aiResult.value.imageUrls,
       styleTags: aiResult.value.styleTags,
       colorTags: aiResult.value.colorTags,
       itemKeywords: aiResult.value.itemKeywords,
       topicId: selectedTopic.value,
+      occasion: publishForm.value.occasion,
       status: status
     }
     await publishOutfit(data)
@@ -112,6 +122,34 @@ const handlePublish = async (status: 'PUBLISHED' | 'PRIVATE') => {
             </div>
 
             <div class="space-y-4 pt-2">
+              <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <div class="text-[10px] font-black text-primary uppercase mb-2">穿搭标题</div>
+                  <el-input 
+                    v-model="publishForm.title" 
+                    placeholder="给你的穿搭起个吸引人的名字吧" 
+                    maxlength="30" 
+                    show-word-limit
+                    size="small"
+                  />
+                </div>
+                <div>
+                  <div class="text-[10px] font-black text-primary uppercase mb-2">适合场景</div>
+                  <el-select 
+                    v-model="publishForm.occasion" 
+                    placeholder="请选择场景" 
+                    class="w-full"
+                    size="small"
+                  >
+                    <el-option label="日常" value="日常" />
+                    <el-option label="约会" value="约会" />
+                    <el-option label="面试/正式" value="面试/正式" />
+                    <el-option label="图书馆" value="图书馆" />
+                    <el-option label="运动" value="运动" />
+                  </el-select>
+                </div>
+              </div>
+
               <div>
                 <div class="text-[10px] font-black text-primary uppercase mb-2">关联话题 (可选)</div>
                 <el-select v-model="selectedTopic" placeholder="选择一个感兴趣的话题" class="w-full" clearable size="small">

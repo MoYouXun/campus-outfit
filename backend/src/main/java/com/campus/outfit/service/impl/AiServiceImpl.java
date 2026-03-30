@@ -97,27 +97,38 @@ public class AiServiceImpl implements AiService {
             String aiResponse = doubaoUtil.chatWithVision(messages);
             AiAnalysisResult result = objectMapper.readValue(extractJson(aiResponse), AiAnalysisResult.class);
             
-            // 【新增】防御性字段填充，防止 AI 返回 null 导致前端显示异常
-            if (result.getSeason() == null || "null".equalsIgnoreCase(result.getSeason())) {
-                result.setSeason("春秋"); // 默认中间地带
+            // 【正则补强】如果 JSON 解析后的关键字段为空，尝试从原始文本中正则匹配提取
+            if (!isValid(result.getSeason())) {
+                java.util.regex.Matcher m = java.util.regex.Pattern.compile("\"season\"\\s*:\\s*\"([^\"]+)\"").matcher(aiResponse);
+                if (m.find()) result.setSeason(m.group(1));
             }
-            if (result.getTemperatureRange() == null || "null".equalsIgnoreCase(result.getTemperatureRange())) {
-                result.setTemperatureRange("舒适");
+            if (!isValid(result.getTemperatureRange())) {
+                java.util.regex.Matcher m = java.util.regex.Pattern.compile("\"temperatureRange\"\\s*:\\s*\"([^\"]+)\"").matcher(aiResponse);
+                if (m.find()) result.setTemperatureRange(m.group(1));
+                else {
+                    m = java.util.regex.Pattern.compile("\"temperature_range\"\\s*:\\s*\"([^\"]+)\"").matcher(aiResponse);
+                    if (m.find()) result.setTemperatureRange(m.group(1));
+                }
             }
-            if (result.getSuggestion() == null || result.getSuggestion().trim().isEmpty()) {
-                result.setSuggestion("这套穿搭平衡感很好，适合多种日常校园场景。");
-            }
+
+            // 【深度清洗】防御性字段填充，强制排除 "null" 字符串
+            if (!isValid(result.getSeason())) result.setSeason("春秋"); 
+            if (!isValid(result.getTemperatureRange())) result.setTemperatureRange("舒适");
+            if (!isValid(result.getSuggestion())) result.setSuggestion("这套穿搭平衡感很好，适合多种日常校园场景。");
             
             return result;
         } catch (Exception e) {
             log.error("分析失败: {}", e.getMessage());
-            // 兜底返回，避免 NPE
             AiAnalysisResult fallback = new AiAnalysisResult();
             fallback.setSeason("春秋");
             fallback.setTemperatureRange("舒适");
             fallback.setSuggestion("AI 正在开小差，但这套搭配看起来很有个性！");
             return fallback;
         }
+    }
+
+    private boolean isValid(String val) {
+        return val != null && !val.trim().isEmpty() && !"null".equalsIgnoreCase(val) && !"undefined".equalsIgnoreCase(val);
     }
 
     @Override

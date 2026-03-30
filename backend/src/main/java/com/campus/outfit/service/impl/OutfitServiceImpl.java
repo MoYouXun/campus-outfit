@@ -202,14 +202,16 @@ public class OutfitServiceImpl extends ServiceImpl<OutfitMapper, Outfit> impleme
                 // 如果实体类中的字段为空，但 aiAnalysis JSON 中有数据，则反向提取填充
                 try {
                     com.fasterxml.jackson.databind.JsonNode aiNode = objectMapper.readTree(outfit.getAiAnalysis());
-                    if ((outfit.getDescription() == null || outfit.getDescription().isEmpty()) && aiNode.has("suggestion")) {
+                    if ((outfit.getDescription() == null || outfit.getDescription().isEmpty() || "null".equalsIgnoreCase(outfit.getDescription())) && aiNode.has("suggestion")) {
                         outfit.setDescription(aiNode.get("suggestion").asText());
                     }
-                    if (outfit.getSeason() == null && aiNode.has("season")) {
-                        outfit.setSeason(aiNode.get("season").asText());
+                    if ((outfit.getSeason() == null || "null".equalsIgnoreCase(outfit.getSeason())) && aiNode.has("season")) {
+                        String s = aiNode.get("season").asText();
+                        outfit.setSeason("null".equalsIgnoreCase(s) ? "春秋" : s);
                     }
-                    if (outfit.getTemperatureRange() == null && aiNode.has("temperatureRange")) {
-                        outfit.setTemperatureRange(aiNode.get("temperatureRange").asText());
+                    if ((outfit.getTemperatureRange() == null || "null".equalsIgnoreCase(outfit.getTemperatureRange())) && aiNode.has("temperatureRange")) {
+                        String t = aiNode.get("temperatureRange").asText();
+                        outfit.setTemperatureRange("null".equalsIgnoreCase(t) ? "舒适" : t);
                     }
                 } catch (Exception e) {
                     System.out.println("[WARNING] 反向提取信息失败: " + e.getMessage());

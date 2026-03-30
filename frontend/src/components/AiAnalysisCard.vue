@@ -35,15 +35,24 @@ const handleUpload = async (data: any) => {
   uploading.value = true
   try {
     const res: any = await uploadAndAnalyze([data.compressedFile])
+    
+    // 显式解构并补全保底值，确保响应式状态完整
+    const season = res.season && res.season !== 'null' ? res.season : '春秋'
+    const temperatureRange = res.temperatureRange && res.temperatureRange !== 'null' ? res.temperatureRange : '舒适'
+    
     aiResult.value = {
       ...res,
+      season,
+      temperatureRange,
       tempImage: data.base64Data
     }
+    
     // 初始化发布表单
     publishForm.value.title = '我的校园穿搭'
     publishForm.value.occasion = '日常'
-    publishForm.value.season = res.season
-    publishForm.value.temperatureRange = res.temperatureRange
+    publishForm.value.season = season
+    publishForm.value.temperatureRange = temperatureRange
+    
     ElMessage.success('AI 分析完成')
   } catch (e) {
     ElMessage.error('分析失败')
@@ -72,10 +81,10 @@ const handlePublish = async (status: 'PUBLISHED' | 'PRIVATE') => {
       itemKeywords: aiResult.value.itemKeywords,
       topicId: selectedTopic.value,
       occasion: publishForm.value.occasion,
-      season: publishForm.value.season,
-      temperatureRange: publishForm.value.temperatureRange,
-      aiAnalysis: JSON.stringify(aiResult.value),
-      status: status
+      status: status,
+      season: aiResult.value.season,
+      temperatureRange: aiResult.value.temperatureRange,
+      aiAnalysis: JSON.stringify(aiResult.value)
     }
     await publishOutfit(data)
     
@@ -176,6 +185,17 @@ const handlePublish = async (status: 'PUBLISHED' | 'PRIVATE') => {
                   <div class="flex flex-wrap gap-1">
                     <el-tag v-for="item in aiResult.itemKeywords" :key="item" type="info" size="small" effect="plain" round>{{ item }}</el-tag>
                   </div>
+                </div>
+              </div>
+
+              <div class="flex items-center gap-4 pt-2 border-t border-primary/10">
+                <div class="flex items-center gap-2">
+                  <span class="text-[10px] font-black text-primary uppercase">季节</span>
+                  <el-tag size="small" type="warning" effect="light">{{ aiResult.season || '待定' }}</el-tag>
+                </div>
+                <div class="flex items-center gap-2">
+                  <span class="text-[10px] font-black text-primary uppercase">温度</span>
+                  <el-tag size="small" type="danger" effect="light">{{ aiResult.temperatureRange || '舒适' }}</el-tag>
                 </div>
               </div>
             </div>

@@ -43,10 +43,12 @@ public class Outfit implements Serializable {
     @TableField(typeHandler = JacksonTypeHandler.class)
     private List<String> itemKeywords;
 
+    @TableField("season")
     private String season;
 
     private String occasion;
 
+    @TableField("temperature_range")
     private String temperatureRange;
     @TableField("status")
     private String status;

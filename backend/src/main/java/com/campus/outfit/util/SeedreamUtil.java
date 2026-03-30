@@ -8,7 +8,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
-import org.springframework.http.client.OkHttp3ClientHttpRequestFactory;
+import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.ResourceAccessException;
 import org.springframework.web.client.RestTemplate;
@@ -30,8 +30,10 @@ public class SeedreamUtil {
 
     public SeedreamUtil(ObjectMapper objectMapper) {
         this.objectMapper = objectMapper;
-        // 使用 OkHttp3 引擎配合 40s 连接超时与 180s 读取超时
-        OkHttp3ClientHttpRequestFactory factory = new OkHttp3ClientHttpRequestFactory();
+        // 【稳定性重构】切换为原生 SimpleClientHttpRequestFactory
+        // 原因：OkHttp 在处理 HTTP/2 (火山引擎默认协议) 的长耗时请求时，流管理逻辑偶尔与服务端心跳不一致，导致 CANCEL
+        // 原生引擎 (基于 HttpURLConnection) 在处理此类阻塞长连接时表现更为稳健
+        SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
         factory.setConnectTimeout(40000); 
         factory.setReadTimeout(180000);
         this.restTemplate = new RestTemplate(factory);
@@ -52,7 +54,6 @@ public class SeedreamUtil {
             HttpHeaders headers = new HttpHeaders();
             headers.setContentType(MediaType.APPLICATION_JSON);
             headers.setBearerAuth(doubaoKey);
-            // 【关键加固】移除 Connection: close 以防 HTTP/2 下流重置 (Stream Cancel)
 
             Map<String, Object> requestBody = new HashMap<>();
             requestBody.put("model", endpointId);
@@ -87,7 +88,7 @@ public class SeedreamUtil {
                 return restTemplate.postForObject(url, entity, String.class);
             } catch (ResourceAccessException e) {
                 lastEx = e;
-                log.warn("[SeedreamUtil] 捕获网络异常, 发起第 {} 次重试...", i + 1);
+                log.warn("[SeedreamUtil] 捕获网络异常 (如 stream reset), 发起第 {} 次重试...", i + 1);
                 if (i < maxRetries - 1) Thread.sleep(2000);
             }
         }

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, nextTick } from 'vue'
-import { MagicStick, Picture, Goods, Loading, Promotion, Search, Link } from '@element-plus/icons-vue'
+import { MagicStick, Picture, Goods, Loading, Promotion, Search, Link, CircleClose } from '@element-plus/icons-vue'
 import { aiAnalyze, aiChat } from '@/api/recommend'
 import { getWardrobeList } from '@/api/wardrobe'
 import { useUserStore } from '@/stores/user'
@@ -20,6 +20,8 @@ const loading = ref(false)
 const sessionId = ref('')
 const scrollContainer = ref<HTMLElement | null>(null)
 const userStore = useUserStore()
+const quoteContent = ref('') // 引用内容预览
+const closeQuote = () => { quoteContent.value = '' }
 
 // 衣柜选择弹窗相关
 const wardrobeVisible = ref(false)
@@ -143,7 +145,10 @@ const sendMessage = async () => {
   if (!inputMessage.value.trim() || loading.value) return
   
   const text = inputMessage.value
+  const fullText = quoteContent.value ? `${quoteContent.value}\n${text}` : text
+
   inputMessage.value = ''
+  closeQuote() // 发送后重置引用
   
   messages.value.push({
     role: 'user',
@@ -156,7 +161,7 @@ const sendMessage = async () => {
 
   try {
     const reply: any = await aiChat({
-      message: text,
+      message: fullText,
       sessionId: sessionId.value
     })
     
@@ -192,8 +197,10 @@ const sendMessage = async () => {
 }
 
 const insertImageReferenceToInput = (title: string, imageUrl: string) => {
-  const reference = ` [引用图片:${title}](${imageUrl}) `
-  inputMessage.value += reference
+  const fullStr = ` [引用图片:${title}](${imageUrl}) `
+  // 【正则清洗】屏蔽所有的 http(s) 链接以及 data:image 的 Base64 长串，替换为 [图片]
+  quoteContent.value = fullStr.replace(/(https?:\/\/[^\s]+|data:image[^\s]+)/g, '[图片]')
+  
   // 自动聚焦输入框
   nextTick(() => {
     const input = document.querySelector('.custom-chat-input input') as HTMLInputElement
@@ -318,6 +325,14 @@ const closeViewer = () => {
              <button @click="openWardrobe" class="flex-1 h-10 rounded-xl flex items-center justify-center gap-2 bg-secondary/30 hover:bg-primary/10 border border-border/50 text-sm font-medium cursor-pointer transition-colors text-foreground/80">
                <el-icon><Goods /></el-icon> 衣柜选取
              </button>
+          </div>
+
+          <!-- 引用显示区域 -->
+          <div v-if="quoteContent" class="mb-2 px-3 py-1.5 bg-primary/5 border-l-4 border-primary rounded-r-lg flex items-center justify-between">
+            <div class="text-[10px] text-primary/80 truncate pr-4 italic">
+              当前引用：{{ quoteContent }}
+            </div>
+            <el-icon class="cursor-pointer hover:text-red-500 transition-colors" @click="closeQuote"><CircleClose /></el-icon>
           </div>
 
           <!-- 文本输入框 -->

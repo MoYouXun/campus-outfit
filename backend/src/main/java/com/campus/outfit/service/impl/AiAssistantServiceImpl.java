@@ -5,6 +5,7 @@ import com.campus.outfit.mapper.WardrobeItemMapper;
 import com.campus.outfit.service.AiAssistantService;
 import com.campus.outfit.util.DoubaoUtil;
 import com.campus.outfit.util.SeedreamUtil;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -41,7 +42,6 @@ public class AiAssistantServiceImpl implements AiAssistantService {
     public String analyze(String mainBase64, String sessionId, Long userId) {
         log.info("[AiAssistant] 接收到分析请求, userId: {}, sessionId: {}", userId, sessionId);
         
-        // 1. 获取全量衣柜数据作为 AI 分析的决策上下文
         List<WardrobeItem> items = wardrobeItemMapper.selectList(
                 new LambdaQueryWrapper<WardrobeItem>().eq(WardrobeItem::getUserId, userId)
         );
@@ -62,49 +62,56 @@ public class AiAssistantServiceImpl implements AiAssistantService {
             }
         }
 
-        // 2. 调用内容生成的 Prompt (要求严苛)
         String prompt = "你是一位专业的校园穿搭顾问。请根据主图和我的衣柜图片，必须且只能推荐 1 套搭配。返回 JSON 字段：style, suggestions (数组), recommendations (数组，仅含 id, title, desc)。";
         String aiJson = doubaoUtil.chat(userId, sessionId, prompt, contextBase64s);
         
-        // 3. 执行单推荐约束与生图增强
         return enhanceJsonWithImage(aiJson, mainBase64, userId, items);
     }
 
     private String enhanceJsonWithImage(String aiJson, String mainBase64, Long userId, List<WardrobeItem> wardrobeItems) {
         try {
             ObjectNode rootNode = (ObjectNode) objectMapper.readTree(aiJson);
-            if (rootNode.has("recommendations") && rootNode.get("recommendations").isArray()) {
-                ArrayNode recommendations = (ArrayNode) rootNode.get("recommendations");
+            JsonNode recNode = rootNode.get("recommendations");
+            if (recNode == null || recNode.isMissingNode()) return aiJson;
+
+            ArrayNode recommendations;
+            if (recNode.isObject()) {
+                // 【幻觉纠正】处理单对象格式幻觉，自动转为数组
+                recommendations = objectMapper.createArrayNode();
+                recommendations.add(recNode);
+                rootNode.set("recommendations", recommendations);
+            } else if (recNode.isArray()) {
+                recommendations = (ArrayNode) recNode;
+            } else {
+                return aiJson;
+            }
+
+            // 【重要防御】强制截断：仅处理第一个推荐
+            while (recommendations.size() > 1) {
+                recommendations.remove(1);
+            }
+
+            if (recommendations.size() > 0) {
+                ObjectNode itemNode = (ObjectNode) recommendations.get(0);
+                Long itemId = itemNode.path("id").asLong();
                 
-                // 【重要防御】强制截断：即使 AI 返回了多个，我们也仅处理第一个，保证 UI 简洁和一张图生成
-                while (recommendations.size() > 1) {
-                    recommendations.remove(1);
-                }
+                List<String> fusionBase64s = new ArrayList<>();
+                fusionBase64s.add(mainBase64);
+                
+                wardrobeItems.stream()
+                        .filter(i -> i.getId().equals(itemId))
+                        .findFirst()
+                        .ifPresent(i -> {
+                            String b64 = downloadToBase64(i.getOriginalImageUrl());
+                            if (b64 != null) {
+                                log.info("[AiAssistant] 命中推荐单品 ID: {}, 加载为融合素材", itemId);
+                                fusionBase64s.add(b64);
+                            }
+                        });
 
-                if (recommendations.size() > 0) {
-                    ObjectNode itemNode = (ObjectNode) recommendations.get(0);
-                    Long itemId = itemNode.path("id").asLong();
-                    
-                    // 【核心加固】精准构建生图素材：底层图 + AI 推荐的那一件单品
-                    List<String> fusionBase64s = new ArrayList<>();
-                    fusionBase64s.add(mainBase64);
-                    
-                    wardrobeItems.stream()
-                            .filter(i -> i.getId().equals(itemId))
-                            .findFirst()
-                            .ifPresent(i -> {
-                                String b64 = downloadToBase64(i.getOriginalImageUrl());
-                                if (b64 != null) {
-                                    log.info("[AiAssistant] 命中推荐单品 ID: {}, 加载为融合素材", itemId);
-                                    fusionBase64s.add(b64);
-                                }
-                            });
-
-                    // 4. 使用用户指定的详细生图 Prompt
-                    String drawPrompt = "将这些衣服单品进行搭配，生成一套完整的全身的穿搭效果图。保持衣服的原貌和特征，光线明亮，背景简洁，适合大学生日常穿搭。";
-                    String effectUrl = seedreamUtil.generateImageFromMultipleBase64(drawPrompt, fusionBase64s);
-                    itemNode.put("image", effectUrl);
-                }
+                String drawPrompt = "将这些衣服单品进行搭配，生成一套完整的全身的穿搭效果图。保持衣服的原貌和特征，光线明亮，背景简洁，适合大学生日常穿搭。";
+                String effectUrl = seedreamUtil.generateImageFromMultipleBase64(drawPrompt, fusionBase64s);
+                itemNode.put("image", effectUrl);
             }
             return objectMapper.writeValueAsString(rootNode);
         } catch (Exception e) {

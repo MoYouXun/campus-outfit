@@ -175,6 +175,13 @@ const handleToggleStatus = async (outfit: any, newStatus: string) => {
     ElMessage.error(error.response?.data?.message || '操作失败')
   }
 }
+
+const handleAnalysisSuccess = () => {
+  isAnalysisVisible.value = false
+  // 切换到最新动态 Tab 并刷新
+  activeTab.value = 'latest'
+  loadData(true)
+}
 </script>
 
 <template>
@@ -281,11 +288,12 @@ const handleToggleStatus = async (outfit: any, newStatus: string) => {
       class="glass-dialog"
     >
       <div class="px-2 pb-6">
-        <AiAnalysisCard />
+        <AiAnalysisCard @success="handleAnalysisSuccess" />
       </div>
     </el-dialog>
   </div>
 </template>
+
 
 <style scoped>
 .floating-action-btn {

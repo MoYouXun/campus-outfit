@@ -4,14 +4,11 @@ import UploadImage from './UploadImage.vue'
 import { ElMessage } from 'element-plus'
 import { uploadAndAnalyze, publishOutfit } from '@/api/outfit'
 import { useRouter } from 'vue-router'
-import { getHotTopics } from '@/api/community'
 import { useUserStore } from '@/stores/user'
 import { MagicStick } from '@element-plus/icons-vue'
 
 const router = useRouter()
 const userStore = useUserStore()
-const topics = ref<any[]>([])
-const selectedTopic = ref<number | null>(null)
 const aiResult = ref<any>(null)
 const uploading = ref(false)
 const publishing = ref(false)
@@ -25,10 +22,7 @@ const publishForm = ref({
 })
 
 onMounted(async () => {
-  try {
-    const res: any = await getHotTopics()
-    topics.value = res
-  } catch (e) {}
+  // 无需获取话题
 })
 
 const handleUpload = async (data: any) => {
@@ -61,6 +55,8 @@ const handleUpload = async (data: any) => {
   }
 }
 
+const emit = defineEmits(['success'])
+
 const handlePublish = async (status: 'PUBLISHED' | 'PRIVATE') => {
   if (!aiResult.value) return
   
@@ -79,7 +75,6 @@ const handlePublish = async (status: 'PUBLISHED' | 'PRIVATE') => {
       styleTags: aiResult.value.styleTags,
       colorTags: aiResult.value.colorTags,
       itemKeywords: aiResult.value.itemKeywords,
-      topicId: selectedTopic.value,
       occasion: publishForm.value.occasion,
       status: status,
       season: aiResult.value.season,
@@ -88,12 +83,15 @@ const handlePublish = async (status: 'PUBLISHED' | 'PRIVATE') => {
     }
     await publishOutfit(data)
     
+    // 无论发布到社区还是私有，都清理状态并通知父组件
+    aiResult.value = null
+    emit('success')
+
     if (status === 'PUBLISHED') {
       ElMessage.success('已发布至社区')
-      router.push('/community')
+      router.push('/')
     } else {
       ElMessage.success('已保存至私人衣橱')
-      aiResult.value = null
     }
   } catch (e: any) {
     console.error('发布失败错误:', e)
@@ -166,12 +164,6 @@ const handlePublish = async (status: 'PUBLISHED' | 'PRIVATE') => {
                 </div>
               </div>
 
-              <div>
-                <div class="text-[10px] font-black text-primary uppercase mb-2">关联话题 (可选)</div>
-                <el-select v-model="selectedTopic" placeholder="选择一个感兴趣的话题" class="w-full" clearable size="small">
-                  <el-option v-for="t in topics" :key="t.id" :label="t.name" :value="t.id" />
-                </el-select>
-              </div>
               
               <div class="grid grid-cols-2 gap-4">
                 <div>

@@ -218,16 +218,15 @@ public class OutfitServiceImpl extends ServiceImpl<OutfitMapper, Outfit> impleme
                 }
             }
 
-            save(outfit);
-
-            // 关联话题
-            if (outfit.getTopicId() != null) {
-                OutfitTopic ot = new OutfitTopic();
-                ot.setOutfitId(outfit.getId());
-                ot.setTopicId(outfit.getTopicId());
-                outfitTopicMapper.insert(ot);
-                topicService.incrementOutfitCount(outfit.getTopicId());
+            // 【末端防御】强制空值检查，确保 season 和 temperatureRange 必须有值入库
+            if (outfit.getSeason() == null || outfit.getSeason().trim().isEmpty() || "null".equalsIgnoreCase(outfit.getSeason())) {
+                outfit.setSeason("春秋");
             }
+            if (outfit.getTemperatureRange() == null || outfit.getTemperatureRange().trim().isEmpty() || "null".equalsIgnoreCase(outfit.getTemperatureRange())) {
+                outfit.setTemperatureRange("舒适");
+            }
+
+            save(outfit);
 
             System.out.println("[DEBUG] 发布成功，ID: " + outfit.getId());
             return Result.success("发布成功");

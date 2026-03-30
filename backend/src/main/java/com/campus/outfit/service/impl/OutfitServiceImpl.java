@@ -18,16 +18,18 @@ import com.campus.outfit.service.MinioService;
 import com.campus.outfit.service.OutfitService;
 import com.campus.outfit.service.TopicService;
 import com.campus.outfit.utils.Result;
+import com.campus.outfit.vo.OutfitVO;
+import com.campus.outfit.mapper.UserMapper;
+import com.campus.outfit.entity.User;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.springframework.beans.BeanUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
+import java.util.stream.Collectors;
 
 @Service
 public class OutfitServiceImpl extends ServiceImpl<OutfitMapper, Outfit> implements OutfitService {
@@ -53,13 +55,16 @@ public class OutfitServiceImpl extends ServiceImpl<OutfitMapper, Outfit> impleme
     @Autowired
     private FavoriteService favoriteService;
 
+    @Autowired
+    private UserMapper userMapper;
+
     @Override
-    public IPage<Outfit> getPublicOutfits(int page, int size) {
+    public IPage<OutfitVO> getPublicOutfits(int page, int size) {
         return getPublicOutfits(page, size, "latest", null, null, null);
     }
 
     @Override
-    public IPage<Outfit> getPublicOutfits(int page, int size, String sortBy, Long topicId, Long targetUserId, Long currentUserId) {
+    public IPage<OutfitVO> getPublicOutfits(int page, int size, String sortBy, Long topicId, Long targetUserId, Long currentUserId) {
         LambdaQueryWrapper<Outfit> wrapper = new LambdaQueryWrapper<Outfit>()
                 .eq(Outfit::getIsPublic, true)
                 .eq(Outfit::getStatus, "PUBLISHED");
@@ -88,11 +93,51 @@ public class OutfitServiceImpl extends ServiceImpl<OutfitMapper, Outfit> impleme
         }
         
         IPage<Outfit> resultPage = page(new Page<>(page, size), wrapper);
-        resultPage.getRecords().forEach(item -> {
-            refreshOutfitUrls(item);
-            populateLikedAndFavorited(item, currentUserId);
-        });
-        return resultPage;
+        return convertToVOPage(resultPage, currentUserId);
+    }
+
+    private IPage<OutfitVO> convertToVOPage(IPage<Outfit> page, Long currentUserId) {
+        List<Outfit> records = page.getRecords();
+        if (records == null || records.isEmpty()) {
+            return new Page<>(page.getCurrent(), page.getSize(), page.getTotal());
+        }
+
+        // 统一刷新 URL
+        records.forEach(this::refreshOutfitUrls);
+
+        // 批量获取作者信息
+        Set<Long> userIds = records.stream().map(Outfit::getUserId).filter(Objects::nonNull).collect(Collectors.toSet());
+        Map<Long, User> userMap = new HashMap<>();
+        if (!userIds.isEmpty()) {
+            List<User> users = userMapper.selectBatchIds(userIds);
+            if (users != null) {
+                userMap = users.stream().collect(Collectors.toMap(User::getId, u -> u));
+            }
+        }
+
+        final Map<Long, User> finalUserMap = userMap;
+        List<OutfitVO> voList = records.stream().map(o -> {
+            OutfitVO vo = new OutfitVO();
+            BeanUtils.copyProperties(o, vo);
+            
+            // 填充作者信息
+            User author = finalUserMap.get(o.getUserId());
+            if (author != null) {
+                String dispName = (author.getNickname() != null && !author.getNickname().trim().isEmpty()) 
+                                  ? author.getNickname() : author.getUsername();
+                vo.setUsername(dispName);
+                vo.setUserAvatar(author.getAvatar());
+            }
+
+            // 填充交互状态
+            populateLikedAndFavorited(vo, currentUserId);
+            
+            return vo;
+        }).collect(Collectors.toList());
+
+        Page<OutfitVO> voPage = new Page<>(page.getCurrent(), page.getSize(), page.getTotal());
+        voPage.setRecords(voList);
+        return voPage;
     }
 
     private void populateLikedAndFavorited(Outfit outfit, Long currentUserId) {
@@ -103,7 +148,7 @@ public class OutfitServiceImpl extends ServiceImpl<OutfitMapper, Outfit> impleme
     }
 
     @Override
-    public IPage<Outfit> getFollowingOutfits(List<Long> followingIds, int page, int size, Long currentUserId) {
+    public IPage<OutfitVO> getFollowingOutfits(List<Long> followingIds, int page, int size, Long currentUserId) {
         if (followingIds == null || followingIds.isEmpty()) {
             return new Page<>(page, size);
         }
@@ -115,11 +160,7 @@ public class OutfitServiceImpl extends ServiceImpl<OutfitMapper, Outfit> impleme
                 .orderByDesc(Outfit::getCreateTime);
         
         IPage<Outfit> resultPage = page(new Page<>(page, size), wrapper);
-        resultPage.getRecords().forEach(item -> {
-            refreshOutfitUrls(item);
-            populateLikedAndFavorited(item, currentUserId);
-        });
-        return resultPage;
+        return convertToVOPage(resultPage, currentUserId);
     }
 
     @Override
@@ -241,13 +282,12 @@ public class OutfitServiceImpl extends ServiceImpl<OutfitMapper, Outfit> impleme
     }
 
     @Override
-    public IPage<Outfit> getMyOutfits(Long userId, int page, int size) {
+    public IPage<OutfitVO> getMyOutfits(Long userId, int page, int size) {
         IPage<Outfit> resultPage = page(new Page<>(page, size), new LambdaQueryWrapper<Outfit>()
                 .eq(Outfit::getUserId, userId)
                 .eq(Outfit::getStatus, "PUBLISHED")
                 .orderByDesc(Outfit::getCreateTime));
-        resultPage.getRecords().forEach(this::refreshOutfitUrls);
-        return resultPage;
+        return convertToVOPage(resultPage, userId);
     }
 
     @Override

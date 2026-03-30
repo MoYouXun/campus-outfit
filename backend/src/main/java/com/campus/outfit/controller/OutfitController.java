@@ -3,6 +3,7 @@ package com.campus.outfit.controller;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.campus.outfit.dto.AiAnalysisResult;
 import com.campus.outfit.entity.Outfit;
+import com.campus.outfit.vo.OutfitVO;
 import com.campus.outfit.security.JwtUtils;
 import com.campus.outfit.service.OutfitService;
 import com.campus.outfit.utils.Result;
@@ -40,7 +41,7 @@ public class OutfitController {
     }
 
     @GetMapping("/mine")
-    public Result<IPage<Outfit>> getMyOutfits(@RequestHeader("Authorization") String token, 
+    public Result<IPage<OutfitVO>> getMyOutfits(@RequestHeader("Authorization") String token, 
                                              @RequestParam(defaultValue = "1") int page, 
                                              @RequestParam(defaultValue = "10") int size) {
         Long userId = jwtUtils.getUserIdFromToken(token.replace("Bearer ", ""));
@@ -48,13 +49,13 @@ public class OutfitController {
     }
 
     @GetMapping("/my-private")
-    public Result<List<com.campus.outfit.vo.OutfitVO>> getMyPrivateOutfits(@RequestHeader("Authorization") String token) {
+    public Result<List<OutfitVO>> getMyPrivateOutfits(@RequestHeader("Authorization") String token) {
         Long userId = jwtUtils.getUserIdFromToken(token.replace("Bearer ", ""));
         return Result.success(outfitService.getMyPrivateOutfits(userId));
     }
 
     @GetMapping("/user/{userId}")
-    public Result<IPage<Outfit>> getUserOutfits(@PathVariable Long userId,
+    public Result<IPage<OutfitVO>> getUserOutfits(@PathVariable Long userId,
                                                @RequestParam(defaultValue = "1") int page,
                                                @RequestParam(defaultValue = "10") int size) {
         return Result.success(outfitService.getPublicOutfits(page, size, "latest", null, userId, null));

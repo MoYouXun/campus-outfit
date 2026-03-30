@@ -47,6 +47,8 @@ public class Outfit implements Serializable {
     private String season;
 
     private String occasion;
+    @TableField("gender_type")
+    private String genderType;
 
     @TableField("temperature_range")
     private String temperatureRange;

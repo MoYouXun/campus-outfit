@@ -5,6 +5,7 @@ import com.campus.outfit.entity.Outfit;
 import com.campus.outfit.entity.Topic;
 import com.campus.outfit.service.*;
 import com.campus.outfit.utils.Result;
+import com.campus.outfit.vo.OutfitVO;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
 
@@ -36,7 +37,7 @@ public class CommunityController {
     private com.campus.outfit.service.UserService userService;
 
     @GetMapping("/feed")
-    public Result<IPage<Outfit>> getFeed(@RequestParam(defaultValue = "1") int page, 
+    public Result<IPage<OutfitVO>> getFeed(@RequestParam(defaultValue = "1") int page, 
                                         @RequestParam(defaultValue = "10") int size, 
                                         @RequestParam(defaultValue = "new") String sortBy,
                                         @RequestParam(required = false) Long topicId,
@@ -45,7 +46,7 @@ public class CommunityController {
     }
 
     @GetMapping("/following")
-    public Result<IPage<Outfit>> getFollowingFeed(@RequestParam Long currentUserId,
+    public Result<IPage<OutfitVO>> getFollowingFeed(@RequestParam Long currentUserId,
                                                  @RequestParam(defaultValue = "1") int page,
                                                  @RequestParam(defaultValue = "10") int size) {
         IPage<com.campus.outfit.entity.Follow> followings = followService.getFollowings(currentUserId, 1, 1000);

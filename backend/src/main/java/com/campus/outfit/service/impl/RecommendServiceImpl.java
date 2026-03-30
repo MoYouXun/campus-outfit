@@ -6,6 +6,9 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.campus.outfit.entity.Favorite;
 import com.campus.outfit.entity.Outfit;
 import com.campus.outfit.mapper.FavoriteMapper;
+import com.campus.outfit.mapper.UserMapper;
+import com.campus.outfit.entity.User;
+import java.util.Arrays;
 
 import com.campus.outfit.service.FavoriteService;
 import com.campus.outfit.service.LikeService;
@@ -29,6 +32,9 @@ public class RecommendServiceImpl implements RecommendService {
 
     @Autowired
     private OutfitService outfitService;
+
+    @Autowired
+    private UserMapper userMapper;
 
 
 
@@ -99,6 +105,7 @@ public class RecommendServiceImpl implements RecommendService {
         }
 
         wrapper.orderByDesc(Outfit::getLikeCount);
+        applyGenderFilter(wrapper, currentUserId);
         IPage<Outfit> outfitPage = outfitService.page(new Page<>(page, size), wrapper);
 
         // 如果按温度筛选没有结果，回退到展示所有已发布穿搭
@@ -107,6 +114,7 @@ public class RecommendServiceImpl implements RecommendService {
                     .eq(Outfit::getIsPublic, true)
                     .eq(Outfit::getStatus, "PUBLISHED")
                     .orderByDesc(Outfit::getLikeCount);
+            applyGenderFilter(fallbackWrapper, currentUserId);
             outfitPage = outfitService.page(new Page<>(page, size), fallbackWrapper);
         }
 
@@ -173,6 +181,7 @@ public class RecommendServiceImpl implements RecommendService {
         }
         exactWrapper.orderByDesc(Outfit::getLikeCount);
 
+        applyGenderFilter(exactWrapper, currentUserId);
         IPage<Outfit> outfitPage = outfitService.page(new Page<>(page, size), exactWrapper);
         String reason = "为您精选适合 " + occasion + " 的当季搭配";
 
@@ -192,6 +201,7 @@ public class RecommendServiceImpl implements RecommendService {
                 occasionWrapper.like(Outfit::getOccasion, occasion);
             }
             occasionWrapper.orderByDesc(Outfit::getLikeCount);
+            applyGenderFilter(occasionWrapper, currentUserId);
             outfitPage = outfitService.page(new Page<>(page, size), occasionWrapper);
             reason = "为您精选适合 " + occasion + " 的高赞搭配";
         }
@@ -200,6 +210,7 @@ public class RecommendServiceImpl implements RecommendService {
             LambdaQueryWrapper<Outfit> fallbackWrapper = new LambdaQueryWrapper<Outfit>()
                     .eq(Outfit::getIsPublic, true).eq(Outfit::getStatus, "PUBLISHED")
                     .orderByDesc(Outfit::getLikeCount);
+            applyGenderFilter(fallbackWrapper, currentUserId);
             outfitPage = outfitService.page(new Page<>(page, size), fallbackWrapper);
             reason = "正在为您寻找更多热门穿搭，不妨先看看这些";
         }
@@ -216,10 +227,12 @@ public class RecommendServiceImpl implements RecommendService {
                 .last("limit 5"));
 
         if (favorites.isEmpty()) {
-            return convertPage(outfitService.page(new Page<>(page, size), new LambdaQueryWrapper<Outfit>()
+            LambdaQueryWrapper<Outfit> wrapper = new LambdaQueryWrapper<Outfit>()
                     .eq(Outfit::getIsPublic, true)
                     .eq(Outfit::getStatus, "PUBLISHED")
-                    .orderByDesc(Outfit::getFavCount)), "为您推荐当前最受欢迎的时尚风格", userId);
+                    .orderByDesc(Outfit::getFavCount);
+            applyGenderFilter(wrapper, userId);
+            return convertPage(outfitService.page(new Page<>(page, size), wrapper), "为您推荐当前最受欢迎的时尚风格", userId);
         }
 
         List<Long> outfitIds = favorites.stream().map(Favorite::getOutfitId).collect(Collectors.toList());
@@ -256,27 +269,71 @@ public class RecommendServiceImpl implements RecommendService {
 
         // 如果没有结果，回退
         if (outfitPage.getRecords().isEmpty()) {
-            outfitPage = outfitService.page(new Page<>(page, size), new LambdaQueryWrapper<Outfit>()
+            LambdaQueryWrapper<Outfit> fallbackWrapper = new LambdaQueryWrapper<Outfit>()
                     .eq(Outfit::getIsPublic, true)
                     .eq(Outfit::getStatus, "PUBLISHED")
-                    .orderByDesc(Outfit::getLikeCount));
+                    .orderByDesc(Outfit::getLikeCount);
+            applyGenderFilter(fallbackWrapper, userId);
+            outfitPage = outfitService.page(new Page<>(page, size), fallbackWrapper);
         }
 
         return convertPage(outfitPage, "根据你最近喜欢的风格为您推荐相似穿搭", userId);
     }
 
 
+    private void applyGenderFilter(LambdaQueryWrapper<Outfit> wrapper, Long currentUserId) {
+        if (currentUserId == null) {
+            wrapper.eq(Outfit::getGenderType, "UNISEX");
+            return;
+        }
+        User user = userMapper.selectById(currentUserId);
+        String gender = (user != null) ? String.valueOf(user.getGender()) : null;
+        if ("男".equals(gender) || "MALE".equalsIgnoreCase(gender) || "1".equals(gender)) {
+            wrapper.in(Outfit::getGenderType, Arrays.asList("MALE", "UNISEX"));
+        } else if ("女".equals(gender) || "FEMALE".equalsIgnoreCase(gender) || "2".equals(gender)) {
+            wrapper.in(Outfit::getGenderType, Arrays.asList("FEMALE", "UNISEX"));
+        } else {
+            wrapper.eq(Outfit::getGenderType, "UNISEX");
+        }
+    }
+
     /**
      * \u5c06 Outfit \u5206\u9875\u8f6c\u6362\u4e3a VO\u3002\u4e3a\u6bcf\u4e2a\u6761\u76ee\u751f\u6210\u5305\u542b\u98ce\u683c/\u989c\u8272\u6807\u7b7e\u7684\u5dee\u5f02\u5316\u63a8\u8350\u7406\u7531\u3002
      */
     private IPage<OutfitVO> convertPage(IPage<Outfit> page, String reason, Long currentUserId) {
-        List<OutfitVO> voList = page.getRecords().stream().map(o -> {
+        List<Outfit> records = page.getRecords();
+        if (records == null || records.isEmpty()) {
+            return new Page<>(page.getCurrent(), page.getSize(), page.getTotal());
+        }
+
+        // 批量获取作者信息，优化性能
+        Set<Long> userIds = records.stream().map(Outfit::getUserId).filter(Objects::nonNull).collect(Collectors.toSet());
+        Map<Long, User> userMap = new HashMap<>();
+        if (!userIds.isEmpty()) {
+            List<User> users = userMapper.selectBatchIds(userIds);
+            if (users != null) {
+                userMap = users.stream().collect(Collectors.toMap(User::getId, u -> u));
+            }
+        }
+
+        final Map<Long, User> finalUserMap = userMap;
+        List<OutfitVO> voList = records.stream().map(o -> {
             try {
                 outfitService.refreshOutfitUrls(o);
             } catch (Exception ignored) {}
             OutfitVO vo = new OutfitVO();
             BeanUtils.copyProperties(o, vo);
             
+            // 填充作者信息
+            User author = finalUserMap.get(o.getUserId());
+            if (author != null) {
+                // 优先使用昵称，其次是用户名
+                String dispName = (author.getNickname() != null && !author.getNickname().trim().isEmpty()) 
+                                  ? author.getNickname() : author.getUsername();
+                vo.setUsername(dispName);
+                vo.setUserAvatar(author.getAvatar());
+            }
+
             // 填充点赞和收藏状态
             if (currentUserId != null) {
                 vo.setLiked(likeService.isLiked(currentUserId, o.getId()));

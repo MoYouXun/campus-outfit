@@ -73,11 +73,11 @@ public class AiServiceImpl implements AiService {
         try {
             List<DoubaoMessage> messages = new ArrayList<>();
             // 【修改点 1】使用强制 JSON 模板约束 AI 输出，杜绝字段丢失
-            String systemPrompt = "你是一个专业的校园穿搭分析助手。请严格分析图中衣物的材质和类型，你必须返回严格的JSON格式。不要输出任何其他说明文字或Markdown标记：\n" +
+            String systemPrompt = "你是一个专业的校园穿搭分析助手。请严格分析图中衣物的材质和类型（如羽绒服代表冬季/冷，短袖代表夏季/热），并必须严格按照以下JSON格式输出结果，不要输出任何其他说明文字或Markdown标记：\n" +
                     "{\n" +
-                    "  \"season\": \"对于'season'字段，你的值只能是['春/秋', '夏', '冬']这三个选项之一\",\n" +
-                    "  \"temperatureRange\": \"对于'temperatureRange'字段，你的值只能是['冷', '凉', '舒适', '热']这四个选项之一。绝对不要输出这7个词以外的任何其他描述。\",\n" +
-                    "  \"gender\": \"分析图中穿搭适用性别。0代表中性/男女同款，1代表男款，2代表女款。你必须返回这三个数字之一。\",\n" +
+                    "  \"genderType\": \"推断该衣物属于男款、女款还是中性款，仅限：MALE/FEMALE/UNISEX 其中之一\",\n" +
+                    "  \"season\": \"推断该衣物适合穿的季节，仅限：春/夏/秋/冬/春秋其中之一\",\n" +
+                    "  \"temperatureRange\": \"推断该衣物适合穿的温度，仅限：冷/凉/舒适/热其中之一\",\n" +
                     "  \"styleTags\": [\"风格标签1\", \"风格标签2\"],\n" +
                     "  \"colorTags\": [\"颜色标签1\", \"颜色标签2\"],\n" +
                     "  \"itemKeywords\": [\"识别到的单品1\", \"识别到的单品2\"],\n" +
@@ -113,6 +113,7 @@ public class AiServiceImpl implements AiService {
             }
 
             // 【深度清洗】防御性字段填充，强制排除 "null" 字符串
+            if (!isValid(result.getGenderType())) result.setGenderType("UNISEX");
             if (!isValid(result.getSeason())) result.setSeason("春秋"); 
             if (!isValid(result.getTemperatureRange())) result.setTemperatureRange("舒适");
             if (!isValid(result.getSuggestion())) result.setSuggestion("这套穿搭平衡感很好，适合多种日常校园场景。");

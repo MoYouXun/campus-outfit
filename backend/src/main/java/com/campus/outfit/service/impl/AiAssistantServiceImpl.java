@@ -224,11 +224,12 @@ public class AiAssistantServiceImpl implements AiAssistantService {
 
                 // 3. 调用 Seedream 绘图大模型重新生成效果图
                 if (!fusionBase64s.isEmpty()) {
-                    String drawPrompt = "将这些衣服单品进行搭配，生成一套完整的全身的穿搭效果图。保持衣服的原貌和特征，光线明亮，背景简洁，适合大学生日常穿搭。";
+                    String drawPrompt = "将这些衣服单品进行搭配，生成一套完整的穿搭全身效果图。保持衣服的原貌和特征，光线明亮，背景简洁，适合大学生日常穿搭。";
                     String effectUrl = seedreamUtil.generateImageFromMultipleBase64(drawPrompt, fusionBase64s);
                     itemNode.put("image", effectUrl);
                 }
             }
+
             return objectMapper.writeValueAsString(rootNode);
         } catch (Exception e) {
             log.error("[AiAssistant] 对话流 JSON 图像增强异常: {}", e.getMessage());

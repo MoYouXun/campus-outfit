@@ -243,7 +243,9 @@ onMounted(loadUser)
 
 <template>
   <div class="min-h-screen bg-background pb-20">
-    <div class="h-48 bg-gradient-to-r from-primary/20 to-secondary/20"></div>
+    <div class="h-48 bg-gradient-to-r from-primary/15 via-secondary/60 to-primary/5"></div>
+
+
     <div class="max-w-5xl mx-auto px-6 -mt-16">
       <div class="flex flex-col md:flex-row items-center md:items-end gap-6 mb-10">
         <el-avatar :size="120" :src="user?.avatar" class="border-4 border-white shadow-xl" />

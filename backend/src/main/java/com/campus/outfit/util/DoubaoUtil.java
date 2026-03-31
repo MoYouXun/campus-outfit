@@ -35,6 +35,9 @@ public class DoubaoUtil {
     @Value("${api.doubao.endpoint-lite}")
     private String endpointId;
 
+    @Value("${api.doubao.base-url:https://ark.cn-beijing.volces.com/api/v3}")
+    private String baseUrl;
+
     public DoubaoUtil(ObjectMapper objectMapper) {
         this.objectMapper = objectMapper;
         // 使用原生 HTTP 引擎确保长耗时请求稳定性
@@ -151,7 +154,8 @@ public class DoubaoUtil {
     }
 
     private String callDoubaoApi(List<DoubaoMessage> messages) throws Exception {
-        String url = "https://ark.cn-beijing.volces.com/api/v3/chat/completions";
+        String url = baseUrl + "/chat/completions";
+        log.info("[DoubaoUtil] 正在请求 API: {}", url);
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_JSON);
         headers.setBearerAuth(doubaoKey);

@@ -6,22 +6,24 @@
 
 @layer base {
   :root {
-    --background: 210 40% 98%;
-    --foreground: 222 47% 11%;
+    --background: 210 20% 98%;
+    --foreground: 215 25% 10%;
     --card: 0 0% 100%;
-    --card-foreground: 222.2 84% 4.9%;
-    --primary: 243 75% 59%;
-    --primary-foreground: 210 40% 98%;
-    --secondary: 210 40% 96.1%;
-    --secondary-foreground: 222.2 47.4% 11.2%;
-    --muted: 210 40% 96.1%;
-    --muted-foreground: 215.4 16.3% 46.9%;
-    --accent: 210 40% 96.1%;
-    --accent-foreground: 222.2 47.4% 11.2%;
-    --border: 214.3 31.8% 91.4%;
-    --input: 214.3 31.8% 91.4%;
+    --card-foreground: 215 25% 10%;
+    --primary: 215 25% 27%;
+    --primary-foreground: 210 20% 98%;
+    --secondary: 210 15% 95%;
+    --secondary-foreground: 215 20% 30%;
+    --muted: 210 10% 94%;
+    --muted-foreground: 215 10% 45%;
+    --accent: 210 15% 92%;
+    --accent-foreground: 215 20% 30%;
+    --border: 210 15% 90%;
+    --input: 210 15% 90%;
     --radius: 0.75rem;
   }
+
+
 
   .dark {
     --background: 222.2 84% 4.9%;
@@ -77,8 +79,10 @@
   }
 
   .text-gradient {
-    @apply bg-gradient-to-r from-primary to-purple-500 bg-clip-text text-transparent;
+    @apply bg-gradient-to-r from-primary to-[#4a5a6a] bg-clip-text text-transparent;
   }
+
+
   
   .flex-center {
     @apply flex items-center justify-center;

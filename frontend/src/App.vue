@@ -38,9 +38,11 @@ const logout = () => {
       <nav class="container mx-auto px-4 h-16 flex items-center justify-between">
         <div class="flex items-center gap-8">
           <router-link to="/" class="flex items-center gap-2 hover:opacity-80 transition-opacity">
-            <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-primary to-indigo-600 flex-center shadow-lg shadow-primary/20 text-white">
+            <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-primary to-[#1a2a3a] flex-center shadow-lg shadow-primary/20 text-white">
               <el-icon size="24"><MagicStick /></el-icon>
             </div>
+
+
             <span class="text-xl font-black tracking-tighter hidden sm:inline-block">Campus<span class="text-primary">Outfit</span></span>
           </router-link>
           

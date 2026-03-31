@@ -59,6 +59,7 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
         user.setPassword(passwordEncoder.encode(password));
         user.setEmail(request.getEmail());
         user.setGender(gender);
+        user.setNickname(username); // 设置默认昵称为用户名
         user.setRole(User.Role.NORMAL);
         user.setFollowCount(0);
         user.setFanCount(0);
@@ -83,6 +84,7 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
         map.put("token", token);
         map.put("userId", user.getId());
         map.put("username", user.getUsername());
+        map.put("nickname", user.getNickname()); // 新增返回昵称
         map.put("role", user.getRole().name());
         map.put("avatar", user.getAvatar());
 

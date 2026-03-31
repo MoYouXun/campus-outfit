@@ -28,7 +28,7 @@ CREATE TABLE user (
     email         VARCHAR(100) NULL COMMENT '邮箱（支持邮箱注册/登录）',
     phone         VARCHAR(20)  NULL COMMENT '手机号（支持手机号注册）',
     password      VARCHAR(100) NOT NULL COMMENT 'BCrypt加密密码',
-    avatar        VARCHAR(512) NULL COMMENT '头像URL（存MinIO地址）',
+    avatar        TEXT         NULL COMMENT '头像URL或Base64',
     nickname      VARCHAR(50)  NULL COMMENT '昵称',
     bio           VARCHAR(200) NULL COMMENT '个人简介',
     gender        TINYINT      NOT NULL COMMENT '性别 (1:男, 2:女)',

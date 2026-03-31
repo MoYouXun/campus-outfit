@@ -85,9 +85,11 @@ public class OutfitServiceImpl extends ServiceImpl<OutfitMapper, Outfit> impleme
         }
 
         if ("hot".equalsIgnoreCase(sortBy)) {
-            wrapper.orderByDesc(Outfit::getLikeCount)
-                   .orderByDesc(Outfit::getCommentCount)
-                   .orderByDesc(Outfit::getCreateTime);
+            // “本周热榜”逻辑优化：
+            // 1. 增加时间窗口：仅展示过去 7 天内发布的内容
+            wrapper.ge(Outfit::getCreateTime, java.time.LocalDateTime.now().minusDays(7));
+            // 2. 引入权重排序：点赞:1.0, 评论:1.5, 收藏:2.0
+            wrapper.last("ORDER BY (like_count + comment_count * 1.5 + fav_count * 2.0) DESC");
         } else {
             wrapper.orderByDesc(Outfit::getCreateTime);
         }

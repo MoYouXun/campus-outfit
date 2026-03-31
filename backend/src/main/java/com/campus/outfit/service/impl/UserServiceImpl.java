@@ -100,6 +100,18 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
         if (dto.getBio() != null) user.setBio(dto.getBio());
         if (dto.getGender() != null) user.setGender(dto.getGender());
         
+        // 处理密码修改
+        if (dto.getNewPassword() != null && !dto.getNewPassword().trim().isEmpty()) {
+            if (dto.getOldPassword() == null || dto.getOldPassword().trim().isEmpty()) {
+                return Result.fail("修改密码需要提供原密码");
+            }
+            User dbUser = getById(userId);
+            if (!passwordEncoder.matches(dto.getOldPassword(), dbUser.getPassword())) {
+                return Result.fail("原密码不正确");
+            }
+            user.setPassword(passwordEncoder.encode(dto.getNewPassword()));
+        }
+        
         updateById(user);
         return Result.success("修改成功");
     }

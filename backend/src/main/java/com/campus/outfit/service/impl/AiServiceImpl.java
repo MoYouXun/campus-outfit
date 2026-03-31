@@ -214,12 +214,21 @@ public class AiServiceImpl implements AiService {
     @Override
     public String analyzeWardrobeItem(String base64Image) {
         List<DoubaoMessage> messages = new ArrayList<>();
-        messages.add(new DoubaoMessage("system", "鉴定单件属性。JSON: isSingleItem, categoryMain, categorySub, color, season, material, reason。"));
+        // 精准化提示词：限制分类和季节范围
+        String systemPrompt = "你是一个专业的衣橱管理专家。请分析图中的单件衣物。要求：\n" +
+                "1. 判定是否为单件衣物(isSingleItem)；\n" +
+                "2. 将其分类到主类目(categoryMain)，必须且仅限为：“上装”或“下装”；\n" +
+                "3. 识别其适合的季节(season)，必须且仅限为：“春/秋”、“夏”或“冬”之一；\n" +
+                "4. 提取子类目(categorySub，如衬衫、牛仔裤)、颜色(color)、材质(material)。\n" +
+                "请严格按以下JSON格式输出，不要有额外描述：\n" +
+                "{\"isSingleItem\":true/false, \"categoryMain\":\"\", \"categorySub\":\"\", \"color\":\"\", \"season\":\"\", \"material\":\"\", \"reason\":\"\"}";
+        
+        messages.add(new DoubaoMessage("system", systemPrompt));
         
         DoubaoMessage userMsg = new DoubaoMessage();
         userMsg.setRole("user");
         List<DoubaoContentPart> parts = new ArrayList<>();
-        parts.add(DoubaoContentPart.text("请鉴定此单品"));
+        parts.add(DoubaoContentPart.text("请鉴定此单品属性"));
         String fmt = doubaoUtil.resolveAndFormatImage(base64Image.startsWith("data:") ? base64Image : "data:image/jpeg;base64," + base64Image);
         if (fmt != null) parts.add(DoubaoContentPart.image(fmt));
         userMsg.setContent(parts);

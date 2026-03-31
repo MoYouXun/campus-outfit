@@ -10,7 +10,7 @@ const route = useRoute()
 const userStore = useUserStore()
 
 const isLoggedIn = computed(() => !!userStore.token)
-const username = computed(() => userStore.userInfo?.username || '')
+const username = computed(() => userStore.userInfo?.nickname || userStore.userInfo?.username || '')
 const avatar = computed(() => userStore.userInfo?.avatar || '')
 const userId = computed(() => userStore.userInfo?.userId)
 const isAdmin = computed(() => userStore.userInfo?.role === 'ADMIN')

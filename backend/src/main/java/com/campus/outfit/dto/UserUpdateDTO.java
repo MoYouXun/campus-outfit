@@ -12,4 +12,6 @@ public class UserUpdateDTO {
     private String avatar;
     private String bio;
     private Integer gender;
+    private String oldPassword;
+    private String newPassword;
 }

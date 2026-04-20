@@ -71,7 +71,8 @@ public class RankingServiceImpl implements RankingService {
                 .eq(Outfit::getIsPublic, true)
                 .eq(Outfit::getStatus, "PUBLISHED");
         if (gender != null && !gender.isEmpty()) {
-            wrapper.in(Outfit::getGenderType, gender.toUpperCase(), "UNISEX");
+            Integer genderVal = "MALE".equalsIgnoreCase(gender) ? 1 : 2;
+            wrapper.and(w -> w.eq(Outfit::getGender, genderVal).or().eq(Outfit::getGender, 0));
         }
         wrapper.orderByDesc(Outfit::getLikeCount).last("LIMIT " + limit);
         List<Outfit> list = outfitService.list(wrapper);
@@ -103,10 +104,10 @@ public class RankingServiceImpl implements RankingService {
 
             String idStr = outfit.getId().toString();
             redisTemplate.opsForZSet().add(RANK_HOT_KEY, idStr, score);
-            if ("MALE".equals(outfit.getGenderType()) || "UNISEX".equals(outfit.getGenderType())) {
+            if (Integer.valueOf(1).equals(outfit.getGender()) || Integer.valueOf(0).equals(outfit.getGender())) {
                 redisTemplate.opsForZSet().add(RANK_HOT_KEY + ":MALE", idStr, score);
             }
-            if ("FEMALE".equals(outfit.getGenderType()) || "UNISEX".equals(outfit.getGenderType())) {
+            if (Integer.valueOf(2).equals(outfit.getGender()) || Integer.valueOf(0).equals(outfit.getGender())) {
                 redisTemplate.opsForZSet().add(RANK_HOT_KEY + ":FEMALE", idStr, score);
             }
         }
@@ -121,7 +122,8 @@ public class RankingServiceImpl implements RankingService {
                 .eq(Outfit::getIsPublic, true)
                 .eq(Outfit::getStatus, "PUBLISHED");
         if (gender != null && !gender.isEmpty()) {
-            wrapper.in(Outfit::getGenderType, gender.toUpperCase(), "UNISEX");
+            Integer genderVal = "MALE".equalsIgnoreCase(gender) ? 1 : 2;
+            wrapper.and(w -> w.eq(Outfit::getGender, genderVal).or().eq(Outfit::getGender, 0));
         }
         wrapper.orderByDesc(Outfit::getLikeCount).last("LIMIT " + limit);
         List<Outfit> list = outfitService.list(wrapper);

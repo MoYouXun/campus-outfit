@@ -80,14 +80,6 @@ public class RecommendServiceImpl implements RecommendService {
                 .eq(Outfit::getIsPublic, true)
                 .eq(Outfit::getStatus, "PUBLISHED");
 
-        // 注入性别过滤
-        if (currentUserId != null) {
-            com.campus.outfit.entity.User user = userService.getById(currentUserId);
-            if (user != null && user.getGender() != null) {
-                Integer userGender = user.getGender();
-                wrapper.and(w -> w.eq(Outfit::getGender, userGender).or().eq(Outfit::getGender, 0));
-            }
-        }
 
         if (temp < 10) {
             wrapper.and(w -> w.like(Outfit::getTemperatureRange, "冷")
@@ -150,14 +142,6 @@ public class RecommendServiceImpl implements RecommendService {
         LambdaQueryWrapper<Outfit> exactWrapper = new LambdaQueryWrapper<Outfit>()
                 .eq(Outfit::getIsPublic, true).eq(Outfit::getStatus, "PUBLISHED");
         
-        // 注入性别过滤
-        if (currentUserId != null) {
-            com.campus.outfit.entity.User user = userService.getById(currentUserId);
-            if (user != null && user.getGender() != null) {
-                Integer userGender = user.getGender();
-                exactWrapper.and(w -> w.eq(Outfit::getGender, userGender).or().eq(Outfit::getGender, 0));
-            }
-        }
         
         if (occasion != null && occasion.contains("/")) {
             String[] keywords = occasion.split("/");
@@ -283,17 +267,15 @@ public class RecommendServiceImpl implements RecommendService {
 
     private void applyGenderFilter(LambdaQueryWrapper<Outfit> wrapper, Long currentUserId) {
         if (currentUserId == null) {
-            wrapper.eq(Outfit::getGenderType, "UNISEX");
+            wrapper.eq(Outfit::getGender, 0);
             return;
         }
         User user = userMapper.selectById(currentUserId);
-        String gender = (user != null) ? String.valueOf(user.getGender()) : null;
-        if ("男".equals(gender) || "MALE".equalsIgnoreCase(gender) || "1".equals(gender)) {
-            wrapper.in(Outfit::getGenderType, Arrays.asList("MALE", "UNISEX"));
-        } else if ("女".equals(gender) || "FEMALE".equalsIgnoreCase(gender) || "2".equals(gender)) {
-            wrapper.in(Outfit::getGenderType, Arrays.asList("FEMALE", "UNISEX"));
+        if (user != null && user.getGender() != null) {
+            Integer userGender = user.getGender();
+            wrapper.and(w -> w.eq(Outfit::getGender, userGender).or().eq(Outfit::getGender, 0));
         } else {
-            wrapper.eq(Outfit::getGenderType, "UNISEX");
+            wrapper.eq(Outfit::getGender, 0);
         }
     }
 

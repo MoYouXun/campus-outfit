@@ -40,7 +40,6 @@ CREATE TABLE IF NOT EXISTS `outfit` (
     `item_keywords`   TEXT          NULL COMMENT '单品关键词（JSON数组）',
     `season`          VARCHAR(20)   NULL COMMENT '季节：SPRING/SUMMER/AUTUMN/WINTER',
     `occasion`        VARCHAR(200)  NULL COMMENT '场合标签（JSON数组，如["上课","约会"]）',
-    `gender_type`     VARCHAR(20)   NOT NULL DEFAULT 'UNISEX' COMMENT '款式性别: MALE(男款), FEMALE(女款), UNISEX(中性款)',
     `temperature_range` VARCHAR(20) NULL COMMENT '适合温度范围（如：15-25°C）',
     `status`          VARCHAR(20)   NOT NULL DEFAULT 'PUBLISHED' COMMENT '状态：PUBLISHED-公开, PRIVATE-私密',
     `is_public`       TINYINT       NOT NULL DEFAULT 1 COMMENT '是否公开：0私密 1公开',
@@ -55,8 +54,7 @@ CREATE TABLE IF NOT EXISTS `outfit` (
     KEY `idx_user` (`user_id`),
     KEY `idx_season` (`season`),
     KEY `idx_status_public` (`status`, `is_public`),
-    KEY `idx_create_time` (`create_time`),
-    KEY `idx_gender_type` (`gender_type`)
+    KEY `idx_create_time` (`create_time`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='穿搭表';
 
 -- 3. AI 穿搭分析记录表 (用于持久化 AI 助手的分析与生图结果)

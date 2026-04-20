@@ -75,7 +75,7 @@ public class AiServiceImpl implements AiService {
             // 【修改点 1】使用强制 JSON 模板约束 AI 输出，杜绝字段丢失
             String systemPrompt = "你是一个专业的校园穿搭分析助手。请严格分析图中衣物的材质和类型（如羽绒服代表冬季/冷，短袖代表夏季/热），并必须严格按照以下JSON格式输出结果，不要输出任何其他说明文字或Markdown标记：\n" +
                     "{\n" +
-                    "  \"genderType\": \"推断该衣物属于男款、女款还是中性款，仅限：MALE/FEMALE/UNISEX 其中之一\",\n" +
+                    "  \"gender\": \"推断该衣物属于男款(1)、女款(2)还是中性款(0)，仅限整数: 1、2 或 0 其中之一\",\n" +
                     "  \"season\": \"推断该衣物适合穿的季节，仅限：春/夏/秋/冬/春秋其中之一\",\n" +
                     "  \"temperatureRange\": \"推断该衣物适合穿的温度，仅限：冷/凉/舒适/热其中之一\",\n" +
                     "  \"styleTags\": [\"风格标签1\", \"风格标签2\"],\n" +
@@ -113,7 +113,7 @@ public class AiServiceImpl implements AiService {
             }
 
             // 【深度清洗】防御性字段填充，强制排除 "null" 字符串
-            if (!isValid(result.getGenderType())) result.setGenderType("UNISEX");
+            if (result.getGender() == null) result.setGender(0);
             if (!isValid(result.getSeason())) result.setSeason("春秋"); 
             if (!isValid(result.getTemperatureRange())) result.setTemperatureRange("舒适");
             if (!isValid(result.getSuggestion())) result.setSuggestion("这套穿搭平衡感很好，适合多种日常校园场景。");

@@ -18,8 +18,5 @@ public class AiAnalysisResult {
 
     private Integer gender;
 
-    @com.fasterxml.jackson.annotation.JsonAlias({"genderType", "gender_type", "gender"})
-    private String genderType;
-
     private List<String> imageUrls;
 }

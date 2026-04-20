@@ -1,25 +1,19 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
-import { getHotRanking, getStyleRanking, getSchoolRanking } from '@/api/ranking'
+import { getHotRanking } from '@/api/ranking'
 
 const router = useRouter()
-const activeType = ref('hot')
 const activeGender = ref('') // '' 代表全部, 'MALE'男生, 'FEMALE'女生
 const rankingList = ref<any[]>([])
 const loading = ref(false)
-
 const loadRanking = async () => {
   loading.value = true
   try {
     const params: any = { limit: 20 }
     if (activeGender.value) params.gender = activeGender.value
     
-    let res
-    if (activeType.value === 'hot') res = await getHotRanking(params) as any
-    else if (activeType.value === 'style') res = await getStyleRanking({ ...params, style: '校园' }) as any
-    else res = await getSchoolRanking({ ...params, school: '默认校园' }) as any
-    
+    const res = await getHotRanking(params) as any
     rankingList.value = res || []
   } catch (e) {
     console.error(e)
@@ -35,11 +29,6 @@ onMounted(loadRanking)
   <div class="p-6 max-w-5xl mx-auto">
     <h1 class="text-3xl font-bold mb-6">穿搭风向标</h1>
 
-    <div class="flex gap-4 mb-2 overflow-x-auto pb-2">
-      <el-button :type="activeType === 'hot' ? 'primary' : 'default'" @click="activeType = 'hot'; loadRanking()" round>热门总榜</el-button>
-      <el-button :type="activeType === 'style' ? 'primary' : 'default'" @click="activeType = 'style'; loadRanking()" round>风格榜</el-button>
-      <el-button :type="activeType === 'school' ? 'primary' : 'default'" @click="activeType = 'school'; loadRanking()" round>校内榜</el-button>
-    </div>
 
     <div class="flex gap-2 mb-4">
       <el-radio-group v-model="activeGender" @change="loadRanking" size="small">

@@ -64,27 +64,7 @@ public class RankingServiceImpl implements RankingService {
         return sortedList;
     }
 
-    @Override
-    public List<Outfit> getStyleRanking(String style, String gender, int limit) {
-        LambdaQueryWrapper<Outfit> wrapper = new LambdaQueryWrapper<Outfit>()
-                .apply("JSON_CONTAINS(style_tags, {0})", "\"" + style + "\"")
-                .eq(Outfit::getIsPublic, true)
-                .eq(Outfit::getStatus, "PUBLISHED");
-        if (gender != null && !gender.isEmpty()) {
-            Integer genderVal = "MALE".equalsIgnoreCase(gender) ? 1 : 2;
-            wrapper.and(w -> w.eq(Outfit::getGender, genderVal).or().eq(Outfit::getGender, 0));
-        }
-        wrapper.orderByDesc(Outfit::getLikeCount).last("LIMIT " + limit);
-        List<Outfit> list = outfitService.list(wrapper);
-        fillAuthorInfo(list);
-        list.forEach(outfitService::refreshOutfitUrls);
-        return list;
-    }
 
-    @Override
-    public List<Outfit> getSchoolRanking(String school, String gender, int limit) {
-        return fallbackRanking(gender, limit);
-    }
 
     @Override
     public void refreshRankings() {
@@ -104,10 +84,10 @@ public class RankingServiceImpl implements RankingService {
 
             String idStr = outfit.getId().toString();
             redisTemplate.opsForZSet().add(RANK_HOT_KEY, idStr, score);
-            if (Integer.valueOf(1).equals(outfit.getGender()) || Integer.valueOf(0).equals(outfit.getGender())) {
+            if (Integer.valueOf(1).equals(outfit.getGender())) {
                 redisTemplate.opsForZSet().add(RANK_HOT_KEY + ":MALE", idStr, score);
             }
-            if (Integer.valueOf(2).equals(outfit.getGender()) || Integer.valueOf(0).equals(outfit.getGender())) {
+            if (Integer.valueOf(2).equals(outfit.getGender())) {
                 redisTemplate.opsForZSet().add(RANK_HOT_KEY + ":FEMALE", idStr, score);
             }
         }
@@ -123,7 +103,7 @@ public class RankingServiceImpl implements RankingService {
                 .eq(Outfit::getStatus, "PUBLISHED");
         if (gender != null && !gender.isEmpty()) {
             Integer genderVal = "MALE".equalsIgnoreCase(gender) ? 1 : 2;
-            wrapper.and(w -> w.eq(Outfit::getGender, genderVal).or().eq(Outfit::getGender, 0));
+            wrapper.eq(Outfit::getGender, genderVal);
         }
         wrapper.orderByDesc(Outfit::getLikeCount).last("LIMIT " + limit);
         List<Outfit> list = outfitService.list(wrapper);

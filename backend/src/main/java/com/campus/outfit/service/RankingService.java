@@ -6,15 +6,7 @@ public interface RankingService {
      */
     java.util.List<com.campus.outfit.entity.Outfit> getHotRanking(String gender, int limit);
 
-    /**
-     * 获取风格排行榜
-     */
-    java.util.List<com.campus.outfit.entity.Outfit> getStyleRanking(String style, String gender, int limit);
 
-    /**
-     * 获取校园排行榜
-     */
-    java.util.List<com.campus.outfit.entity.Outfit> getSchoolRanking(String school, String gender, int limit);
 
     /**
      * 定时任务刷新排行榜（模拟，由定时任务调用）

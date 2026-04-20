@@ -20,15 +20,7 @@ public class RankingController {
         return Result.success(rankingService.getHotRanking(gender, limit));
     }
 
-    @GetMapping("/style")
-    public Result<List<Outfit>> getStyleRanking(@RequestParam String style, @RequestParam(required = false) String gender, @RequestParam(defaultValue = "10") int limit) {
-        return Result.success(rankingService.getStyleRanking(style, gender, limit));
-    }
 
-    @GetMapping("/school")
-    public Result<List<Outfit>> getSchoolRanking(@RequestParam String school, @RequestParam(required = false) String gender, @RequestParam(defaultValue = "10") int limit) {
-        return Result.success(rankingService.getSchoolRanking(school, gender, limit));
-    }
 
     @PostMapping("/refresh")
     public Result<String> refresh() {

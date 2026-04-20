@@ -8,22 +8,6 @@ export function getHotRanking(params: any) {
   })
 }
 
-export function getStyleRanking(params: any) {
-  return request({
-    url: '/ranking/style',
-    method: 'get',
-    params
-  })
-}
-
-export function getSchoolRanking(params: any) {
-  return request({
-    url: '/ranking/school',
-    method: 'get',
-    params
-  })
-}
-
 export function refreshRankingCache() {
   return request({
     url: '/ranking/refresh',

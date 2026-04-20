@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, reactive } from 'vue'
+import { ref, reactive, computed } from 'vue'
 import { ElMessage } from 'element-plus'
 import { User, Lock, Edit, InfoFilled, Checked } from '@element-plus/icons-vue'
 import { updateProfile, getUserInfo } from '@/api/user'
@@ -18,20 +18,29 @@ const form = reactive({
   newPassword: ''
 })
 
+// 计算属性：判断密码是否发生变更
+const isPasswordChanged = computed(() => !!(form.newPassword && form.newPassword.trim()))
+
+/**
+ * 打开弹窗并加载用户信息
+ * @param userId 用户 ID
+ */
 const open = async (userId: string | number) => {
   visible.value = true
   form.oldPassword = ''
   form.newPassword = ''
+  
+  loading.value = true
   try {
-    loading.value = true
     const res: any = await getUserInfo(userId)
     const user = res.user || res
     form.nickname = user.nickname || ''
     form.avatar = user.avatar || ''
     form.bio = user.bio || ''
     form.gender = user.gender
-  } catch (e) {
-    ElMessage.error('获取用户信息失败')
+  } catch (err: any) {
+    console.error('[ProfileDialog] 获取用户信息异常:', err)
+    ElMessage.error(err.response?.data?.message || '获取用户信息失败')
   } finally {
     loading.value = false
   }
@@ -41,16 +50,19 @@ const handleAvatarSuccess = (data: any) => {
   form.avatar = data.url || data.base64Data
 }
 
+/**
+ * 提交资料修改
+ */
 const submit = async () => {
   loading.value = true
   try {
-    const passwordChanged = !!(form.newPassword && form.newPassword.trim())
     await updateProfile(form)
     ElMessage.success('资料修改成功')
     visible.value = false
-    emit('success', { passwordChanged })
-  } catch (e: any) {
-    ElMessage.error(e.response?.data?.message || '修改失败')
+    emit('success', { passwordChanged: isPasswordChanged.value })
+  } catch (err: any) {
+    console.error('[ProfileDialog] 修改资料异常:', err)
+    ElMessage.error(err.response?.data?.message || '资料修改失败')
   } finally {
     loading.value = false
   }

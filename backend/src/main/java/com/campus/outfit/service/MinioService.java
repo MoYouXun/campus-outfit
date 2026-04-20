@@ -125,6 +125,36 @@ public class MinioService {
     }
 
     /**
+     * 从 URL 或原始对象名中提取 MinIO 对象名
+     * @param urlOrName 包含路径或签名的 URL 或者是原始文件名
+     * @return 提取出的对象名
+     */
+    public String extractObjectName(String urlOrName) {
+        if (urlOrName == null || urlOrName.trim().isEmpty()) return null;
+        
+        // 如果是完整的 URL (包含 http/https)
+        if (urlOrName.contains("://")) {
+            try {
+                // 去除可能存在的查询参数 (如 ?X-Amz-Algorithm=...)
+                String path = urlOrName.split("\\?")[0];
+                // 获取最后一段路径作为对象名
+                return path.substring(path.lastIndexOf('/') + 1);
+            } catch (Exception e) {
+                log.warn("[MinIO] 从接口 URL 提取对象名失败: {}", urlOrName);
+                return null;
+            }
+        }
+        
+        // 如果包含路径分隔符但不是完整链接
+        if (urlOrName.contains("/")) {
+            return urlOrName.substring(urlOrName.lastIndexOf('/') + 1);
+        }
+        
+        // 否则认为它本身就是对象名
+        return urlOrName;
+    }
+
+    /**
      * 删除 MinIO 中的对象
      * @param objectName 对象名称
      */

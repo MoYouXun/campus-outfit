@@ -95,28 +95,36 @@ public class WardrobeItemServiceImpl extends ServiceImpl<WardrobeItemMapper, War
     public List<WardrobeItem> getUserWardrobe(Long userId) {
         QueryWrapper<WardrobeItem> queryWrapper = new QueryWrapper<>();
         queryWrapper.eq("user_id", userId);
-        return this.list(queryWrapper);
+        List<WardrobeItem> list = this.list(queryWrapper);
+        list.forEach(this::refreshImageUrl);
+        return list;
     }
 
     @Override
     public List<WardrobeItem> getWardrobeByType(Long userId, String type) {
         QueryWrapper<WardrobeItem> queryWrapper = new QueryWrapper<>();
         queryWrapper.eq("user_id", userId).eq("category_main", type);
-        return this.list(queryWrapper);
+        List<WardrobeItem> list = this.list(queryWrapper);
+        list.forEach(this::refreshImageUrl);
+        return list;
     }
 
     @Override
     public List<WardrobeItem> getWardrobeBySeason(Long userId, String season) {
         QueryWrapper<WardrobeItem> queryWrapper = new QueryWrapper<>();
         queryWrapper.eq("user_id", userId).like("season", season);
-        return this.list(queryWrapper);
+        List<WardrobeItem> list = this.list(queryWrapper);
+        list.forEach(this::refreshImageUrl);
+        return list;
     }
 
     @Override
     public List<WardrobeItem> getWardrobeByStyle(Long userId, String style) {
         QueryWrapper<WardrobeItem> queryWrapper = new QueryWrapper<>();
         queryWrapper.eq("user_id", userId).like("ai_raw_tags", style);
-        return this.list(queryWrapper);
+        List<WardrobeItem> list = this.list(queryWrapper);
+        list.forEach(this::refreshImageUrl);
+        return list;
     }
 
     @Override
@@ -148,5 +156,26 @@ public class WardrobeItemServiceImpl extends ServiceImpl<WardrobeItemMapper, War
             return false;
         }
         return this.removeById(id);
+    }
+
+    @Override
+    public void refreshImageUrl(WardrobeItem item) {
+        if (item == null) return;
+        try {
+            if (item.getOriginalImageUrl() != null) {
+                String objName = minioService.extractObjectName(item.getOriginalImageUrl());
+                if (objName != null) {
+                    item.setOriginalImageUrl(minioService.getImageUrl(objName));
+                }
+            }
+            if (item.getProcessedImageUrl() != null) {
+                String objName = minioService.extractObjectName(item.getProcessedImageUrl());
+                if (objName != null) {
+                    item.setProcessedImageUrl(minioService.getImageUrl(objName));
+                }
+            }
+        } catch (Exception e) {
+            log.warn("[Wardrobe] 刷新单品图片 URL 失败, itemId: {}, reason: {}", item.getId(), e.getMessage());
+        }
     }
 }

@@ -60,6 +60,7 @@ public class RankingServiceImpl implements RankingService {
             }
         }
         fillAuthorInfo(sortedList);
+        sortedList.forEach(outfitService::refreshOutfitUrls);
         return sortedList;
     }
 
@@ -75,6 +76,7 @@ public class RankingServiceImpl implements RankingService {
         wrapper.orderByDesc(Outfit::getLikeCount).last("LIMIT " + limit);
         List<Outfit> list = outfitService.list(wrapper);
         fillAuthorInfo(list);
+        list.forEach(outfitService::refreshOutfitUrls);
         return list;
     }
 
@@ -124,6 +126,7 @@ public class RankingServiceImpl implements RankingService {
         wrapper.orderByDesc(Outfit::getLikeCount).last("LIMIT " + limit);
         List<Outfit> list = outfitService.list(wrapper);
         fillAuthorInfo(list);
+        list.forEach(outfitService::refreshOutfitUrls);
         return list;
     }
 

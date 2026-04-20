@@ -20,12 +20,12 @@ public interface AiService {
     String analyzePortraitForTryOn(String base64Image);
 
     /**
-     * 生成 AI 换装后的图片（通用单件/套装模式）
+     * 生成 AI 换装后的图片（支持多件服饰融合，如上下装）
      * @param personImageUrl 人像图Url
-     * @param outfitImageUrl 服饰图Url（套装或单件）
+     * @param outfitImageUrls 服饰图Url列表
      * @return 生成出的图片 URL 或 Base64
      */
-    String generateTryOnImage(String personImageUrl, String outfitImageUrl);
+    String generateTryOnImage(String personImageUrl, java.util.List<String> outfitImageUrls);
 
     /**
      * 使用衣柜上下文分析穿搭图片（支持多模态与多轮对话）

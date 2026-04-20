@@ -151,12 +151,14 @@ public class AiServiceImpl implements AiService {
     }
 
     @Override
-    public String generateTryOnImage(String personImageUrl, String outfitImageUrl) {
+    public String generateTryOnImage(String personImageUrl, List<String> outfitImageUrls) {
         // 目前由 DressingDiffusionV2 (Seedream) 逻辑接管
         log.info("[AI Service] 尝试进行虚拟试衣...");
         List<String> images = new ArrayList<>();
         images.add(personImageUrl);
-        images.add(outfitImageUrl);
+        if (outfitImageUrls != null) {
+            images.addAll(outfitImageUrls);
+        }
         return seedreamUtil.generateImageFromMultipleBase64("基于提供的素材生成试衣效果", images);
     }
 

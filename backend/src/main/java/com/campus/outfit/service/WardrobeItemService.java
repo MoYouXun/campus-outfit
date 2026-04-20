@@ -48,4 +48,10 @@ public interface WardrobeItemService extends IService<WardrobeItem> {
      * 删除衣柜单品（带权校验）
      */
     boolean deleteWardrobeItem(Long id, Long userId);
+
+    /**
+     * 刷新单品的图片 URL（针对 MinIO 签名链接过期）
+     * @param item 衣柜单品对象
+     */
+    void refreshImageUrl(WardrobeItem item);
 }

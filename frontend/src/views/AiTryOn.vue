@@ -227,7 +227,7 @@ const handleTryOn = async () => {
               <el-icon size="64" class="text-primary animate-spin"><IconLoading /></el-icon>
             </div>
             <h3 class="text-2xl font-bold mb-2">AI 正在编织时尚...</h3>
-            <p class="text-muted-foreground animate-pulse text-center max-w-sm">正在深度融合面料褶皱、人体轮廓与环境光影，预计需要 15-20 秒，请耐心等待这份惊艳</p>
+            <p class="text-muted-foreground animate-pulse text-center max-w-sm">正在深度融合面料褶皱、人体轮廓与环境光影，预计需要 1-2 分钟，请耐心等待这份惊艳</p>
           </div>
 
           <div v-else-if="resultImageUrl" class="result-display h-full min-h-[600px] flex items-center justify-center relative">

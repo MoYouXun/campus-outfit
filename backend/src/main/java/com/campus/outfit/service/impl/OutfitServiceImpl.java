@@ -361,7 +361,7 @@ public class OutfitServiceImpl extends ServiceImpl<OutfitMapper, Outfit> impleme
         if (outfit == null) return;
         try {
             if (outfit.getThumbnailUrl() != null) {
-                String objName = extractObjectName(outfit.getThumbnailUrl());
+                String objName = minioService.extractObjectName(outfit.getThumbnailUrl());
                 if (objName != null) {
                     outfit.setThumbnailUrl(minioService.getImageUrl(objName));
                 }
@@ -369,7 +369,7 @@ public class OutfitServiceImpl extends ServiceImpl<OutfitMapper, Outfit> impleme
             if (outfit.getImageUrls() != null && !outfit.getImageUrls().isEmpty()) {
                 List<String> newUrls = new ArrayList<>();
                 for (String url : outfit.getImageUrls()) {
-                    String objName = extractObjectName(url);
+                    String objName = minioService.extractObjectName(url);
                     if (objName != null) {
                         newUrls.add(minioService.getImageUrl(objName));
                     } else {
@@ -383,15 +383,6 @@ public class OutfitServiceImpl extends ServiceImpl<OutfitMapper, Outfit> impleme
         }
     }
 
-    private String extractObjectName(String url) {
-        if (url == null || !url.contains("/")) return null;
-        try {
-            String path = url.split("\\?")[0];
-            return path.substring(path.lastIndexOf('/') + 1);
-        } catch (Exception e) {
-            return null;
-        }
-    }
 
     @Override
     public List<com.campus.outfit.vo.OutfitVO> getMyPrivateOutfits(Long userId) {

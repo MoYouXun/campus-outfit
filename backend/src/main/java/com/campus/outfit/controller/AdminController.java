@@ -78,4 +78,12 @@ public class AdminController {
                 .orderByDesc(SystemDailyStat::getStatDate)
                 .last("LIMIT " + days)));
     }
+
+    @GetMapping("/stats/summary")
+    public Result<java.util.Map<String, Object>> getSummary() {
+        java.util.Map<String, Object> summary = new java.util.HashMap<>();
+        summary.put("userTotal", userService.count());
+        summary.put("outfitTotal", outfitService.count());
+        return Result.success(summary);
+    }
 }

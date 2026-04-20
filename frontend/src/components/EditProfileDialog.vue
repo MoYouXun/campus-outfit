@@ -115,8 +115,8 @@ defineExpose({ open })
 
           <el-form-item label="性别">
             <el-radio-group v-model="form.gender" class="flex w-full bg-secondary/30 p-1 rounded-xl">
-              <el-radio-button :label="1" class="flex-1">男生</el-radio-button>
-              <el-radio-button :label="2" class="flex-1">女生</el-radio-button>
+              <el-radio-button :value="1" class="flex-1">男生</el-radio-button>
+              <el-radio-button :value="2" class="flex-1">女生</el-radio-button>
             </el-radio-group>
           </el-form-item>
 

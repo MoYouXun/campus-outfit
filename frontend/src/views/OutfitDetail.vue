@@ -7,7 +7,23 @@ import { followUser, unfollowUser } from '@/api/user'
 import { incrementViewCount } from '@/api/outfit'
 import { useUserStore } from '@/stores/user'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Pointer, Star, View, Plus, Check, MagicStick, Close } from '@element-plus/icons-vue'
+import request from '@/utils/request'
+import { 
+  Pointer, 
+  Star, 
+  View, 
+  Plus, 
+  Check, 
+  MagicStick, 
+  Close, 
+  Warning, 
+  Flag,
+  WarnTriangleFilled,
+  ChatDotRound,
+  Lock,
+  Monitor,
+  CircleCloseFilled
+} from '@element-plus/icons-vue'
 import CommentItem from '../components/CommentItem.vue'
 
 import { getImageUrl } from '@/api/image'
@@ -214,6 +230,41 @@ const handleComment = async () => {
   } catch (e) {}
 }
 
+const reportVisible = ref(false)
+const reportLoading = ref(false)
+const reportForm = ref({ reason: '色情低俗或不适宜', detail: '' })
+
+const reportReasons = [
+  { label: '色情低俗或不适宜', icon: CircleCloseFilled, desc: '包含露骨、低俗或引起不适的内容' },
+  { label: '恶意引战或人身攻击', icon: WarnTriangleFilled, desc: '对他人的谩骂、歧视或挑衅行为' },
+  { label: '垃圾广告或营销', icon: Monitor, desc: '频繁发布推销信息或虚假广告' },
+  { label: '侵犯版权或盗图', icon: Lock, desc: '未经授权转载或盗用他人原创内容' }
+]
+
+const openReportDialog = () => {
+  reportVisible.value = true
+  reportForm.value.reason = '色情低俗或不适宜'
+  reportForm.value.detail = ''
+}
+
+const submitReport = async () => {
+  reportLoading.value = true
+  try {
+    await request.post('/reports', {
+      targetType: 'OUTFIT',
+      targetId: id,
+      reason: reportForm.value.reason,
+      detail: reportForm.value.detail
+    })
+    ElMessage.success('举报已递交风控中心审核')
+    reportVisible.value = false
+  } catch (e) {
+    ElMessage.error('无法递交举报，请稍后重试')
+  } finally {
+    reportLoading.value = false
+  }
+}
+
 onMounted(loadData)
 </script>
 
@@ -287,6 +338,9 @@ onMounted(loadData)
                 </div>
                 <span :class="['text-xs font-bold', outfitDetail.favorited ? 'text-yellow-500' : 'text-muted-foreground']">{{ outfitDetail.outfit.favCount }}</span>
               </div>
+              <el-button type="danger" link @click="openReportDialog" title="举报违规">
+                <el-icon><Warning /></el-icon> 举报
+              </el-button>
               <div class="flex-1"></div>
               <div class="text-[10px] text-muted-foreground flex items-center gap-1 opacity-60">
                 <el-icon><View /></el-icon> {{ outfitDetail.outfit.viewCount }} 浏览
@@ -334,6 +388,68 @@ onMounted(loadData)
         </div>
       </div>
     </div>
+
+    <el-dialog 
+      v-model="reportVisible" 
+      title="风控中心 · 违规内容举报" 
+      width="460px" 
+      destroy-on-close 
+      align-center
+      class="report-dialog"
+    >
+      <div class="space-y-6">
+        <div>
+          <p class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3">请选择举报原因</p>
+          <div class="space-y-2">
+            <div 
+              v-for="item in reportReasons" 
+              :key="item.label"
+              class="report-reason-card"
+              :class="{ 'active': reportForm.reason === item.label }"
+              @click="reportForm.reason = item.label"
+            >
+              <div class="w-10 h-10 rounded-xl flex items-center justify-center transition-colors" :class="reportForm.reason === item.label ? 'bg-rose-500 text-white' : 'bg-slate-100 text-slate-400'">
+                <el-icon :size="20"><component :is="item.icon" /></el-icon>
+              </div>
+              <div class="flex-1">
+                <p class="text-sm font-bold leading-tight" :class="reportForm.reason === item.label ? 'text-slate-800' : 'text-slate-600'">{{ item.label }}</p>
+                <p class="text-[10px] opacity-60 mt-0.5">{{ item.desc }}</p>
+              </div>
+              <div v-if="reportForm.reason === item.label" class="animate-in fade-in zoom-in duration-300">
+                <el-icon class="text-rose-500" size="18"><Check /></el-icon>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div>
+          <p class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3">详细描述 (可选)</p>
+          <el-input
+            v-model="reportForm.detail"
+            type="textarea"
+            :rows="3"
+            placeholder="请提供更多细节，帮助审核员快速判断..."
+            maxlength="200"
+            show-word-limit
+            class="report-textarea"
+          />
+        </div>
+      </div>
+
+      <template #footer>
+        <div class="flex gap-3 pt-2">
+          <el-button class="flex-1 !h-12 !rounded-xl font-bold" @click="reportVisible = false">取消</el-button>
+          <el-button 
+            type="danger" 
+            class="flex-1 !h-12 !rounded-xl font-bold shadow-lg shadow-rose-500/20" 
+            :loading="reportLoading" 
+            @click="submitReport"
+          >
+            提交风控审核
+          </el-button>
+        </div>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -346,4 +462,34 @@ onMounted(loadData)
 }
 .custom-scrollbar::-webkit-scrollbar { width: 4px; }
 .custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.1); border-radius: 10px; }
+
+.report-reason-card {
+  @apply flex items-center gap-4 p-4 rounded-2xl border border-slate-100 cursor-pointer transition-all duration-300;
+}
+.report-reason-card:hover {
+  @apply bg-slate-50 scale-[1.01] border-slate-200;
+}
+.report-reason-card.active {
+  @apply bg-rose-50/50 border-rose-200 shadow-sm shadow-rose-200/20 translate-x-1;
+}
+
+:deep(.report-textarea .el-textarea__inner) {
+  @apply !rounded-2xl !bg-slate-50 !border-slate-100 focus:!border-rose-200 focus:!bg-white transition-all p-4 text-sm;
+}
+
+:deep(.report-dialog) {
+  @apply !rounded-[32px] overflow-hidden;
+}
+:deep(.report-dialog .el-dialog__header) {
+  @apply !pt-8 !px-8 !pb-0;
+}
+:deep(.report-dialog .el-dialog__title) {
+  @apply text-lg font-black text-slate-800;
+}
+:deep(.report-dialog .el-dialog__body) {
+  @apply !p-8;
+}
+:deep(.report-dialog .el-dialog__footer) {
+  @apply !px-8 !pb-8 !pt-0;
+}
 </style>

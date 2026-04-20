@@ -32,9 +32,9 @@ onMounted(loadRanking)
 
     <div class="flex gap-2 mb-4">
       <el-radio-group v-model="activeGender" @change="loadRanking" size="small">
-        <el-radio-button label="">全部性别</el-radio-button>
-        <el-radio-button label="MALE">男生热榜</el-radio-button>
-        <el-radio-button label="FEMALE">女生热榜</el-radio-button>
+        <el-radio-button value="">全部性别</el-radio-button>
+        <el-radio-button value="MALE">男生热榜</el-radio-button>
+        <el-radio-button value="FEMALE">女生热榜</el-radio-button>
       </el-radio-group>
     </div>
 

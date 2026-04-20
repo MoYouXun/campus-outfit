@@ -58,7 +58,7 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
         user.setUsername(username);
         user.setPassword(passwordEncoder.encode(password));
         user.setEmail(request.getEmail());
-        user.setGender(gender);
+        user.setGender(String.valueOf(gender));
         user.setNickname(username); // 设置默认昵称为用户名
         user.setRole(User.Role.NORMAL);
         user.setFollowCount(0);
@@ -100,7 +100,7 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
         if (dto.getNickname() != null) user.setNickname(dto.getNickname());
         if (dto.getAvatar() != null) user.setAvatar(dto.getAvatar());
         if (dto.getBio() != null) user.setBio(dto.getBio());
-        if (dto.getGender() != null) user.setGender(dto.getGender());
+        if (dto.getGender() != null) user.setGender(String.valueOf(dto.getGender()));
         
         // 处理密码修改
         if (dto.getNewPassword() != null && !dto.getNewPassword().trim().isEmpty()) {

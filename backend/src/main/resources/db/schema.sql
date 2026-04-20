@@ -231,3 +231,59 @@ CREATE TABLE IF NOT EXISTS `ai_analysis_record` (
     PRIMARY KEY (`id`),
     KEY `idx_user_id` (`user_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='AI 穿搭分析记录表';
+
+-- =============================================
+-- 11. 举报信息表
+-- =============================================
+CREATE TABLE report (
+    id            BIGINT       NOT NULL AUTO_INCREMENT COMMENT '举报ID',
+    reporter_id   BIGINT       NOT NULL COMMENT '举报人ID',
+    target_type   VARCHAR(20)  NOT NULL COMMENT '举报目标类型 (OUTFIT/COMMENT/USER)',
+    target_id     BIGINT       NOT NULL COMMENT '举报目标ID',
+    reason        VARCHAR(50)  NOT NULL COMMENT '举报原因',
+    detail        VARCHAR(255) NULL     COMMENT '详细描述',
+    status        VARCHAR(20)  NOT NULL DEFAULT 'PENDING' COMMENT '处理状态 (PENDING/PROCESSED/REJECTED)',
+    create_time   DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    update_time   DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+    is_deleted    TINYINT      NOT NULL DEFAULT 0 COMMENT '逻辑删除',
+    PRIMARY KEY (id),
+    KEY idx_reporter (reporter_id),
+    KEY idx_target (target_type, target_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='举报信息表';
+
+-- =============================================
+-- 12. 系统每日统计表
+-- =============================================
+CREATE TABLE system_daily_stat (
+    id                BIGINT   NOT NULL AUTO_INCREMENT COMMENT '统计ID',
+    stat_date         DATE     NOT NULL COMMENT '统计日期',
+    new_user_count    INT      NOT NULL DEFAULT 0 COMMENT '新增用户数',
+    new_outfit_count  INT      NOT NULL DEFAULT 0 COMMENT '新增穿搭数',
+    ai_call_count     INT      NOT NULL DEFAULT 0 COMMENT 'AI调用次数',
+    report_count      INT      NOT NULL DEFAULT 0 COMMENT '报案/举报次数',
+    create_time       DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '统计执行时间',
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_stat_date (stat_date)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='系统每日统计表';
+
+-- =============================================
+-- 13. 管理员审计日志表
+-- =============================================
+CREATE TABLE audit_log (
+    id            BIGINT       NOT NULL AUTO_INCREMENT COMMENT '日志ID',
+    admin_id      BIGINT       NOT NULL COMMENT '执行者ID',
+    action_type   VARCHAR(50)  NOT NULL COMMENT '操作类型 (DELETE_USER/DELETE_OUTFIT/RESOLVE_REPORT/...)',
+    target_id     BIGINT       NULL     COMMENT '操作目标目标ID',
+    description   VARCHAR(255) NULL     COMMENT '详细描述',
+    ip_address    VARCHAR(50)  NULL     COMMENT '操作人IP',
+    create_time   DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '操作时间',
+    PRIMARY KEY (id),
+    KEY idx_admin (admin_id),
+    KEY idx_create_time (create_time)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='管理员审计日志表';
+
+-- =============================================
+-- 初始化超级管理员账号（密码：admin123）
+-- =============================================
+INSERT INTO user (username, nickname, password, role, gender, school) 
+VALUES ('super_admin', '超级管理员', '$2a$10$N.zmdr9k7uOCQb376NoUnuTJ8iAt6Z5EHsM8lE9lBOsl7iAt.8G02', 'ADMIN', 1, '系统管理');

@@ -24,8 +24,9 @@ public class User implements Serializable {
     private String avatar;
     private String nickname;
     private String bio;
-    private Integer gender;
+    private String gender; // 修改为 String 匹配数据库 VARCHAR
     private String school;
+    private String location; // 添加缺失的字段
     private Role role;
     
     // 关注粉丝统计快照

@@ -272,8 +272,13 @@ public class RecommendServiceImpl implements RecommendService {
         }
         User user = userMapper.selectById(currentUserId);
         if (user != null && user.getGender() != null) {
-            Integer userGender = user.getGender();
-            wrapper.and(w -> w.eq(Outfit::getGender, userGender).or().eq(Outfit::getGender, 0));
+            try {
+                Integer userGender = Integer.valueOf(user.getGender());
+                wrapper.and(w -> w.eq(Outfit::getGender, userGender).or().eq(Outfit::getGender, 0));
+            } catch (NumberFormatException e) {
+                // 如果性别不是数字字符串（例如是 "MALE"），则默认只看中性款
+                wrapper.eq(Outfit::getGender, 0);
+            }
         } else {
             wrapper.eq(Outfit::getGender, 0);
         }

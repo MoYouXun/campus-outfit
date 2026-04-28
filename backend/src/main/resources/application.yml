@@ -11,7 +11,7 @@ spring:
     driver-class-name: com.mysql.cj.jdbc.Driver
     url: jdbc:mysql://localhost:3306/campus_outfit?useUnicode=true&characterEncoding=utf-8&useSSL=false&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true
     username: root
-    password: 123456
+    password: ${MYSQL_PASSWORD:123456}
 
   # Redis配置
   redis:
@@ -41,30 +41,29 @@ mybatis-plus:
 # 第三方服务配置
 api:
   qweather:
-    key: 308cc452f1c648e5bd8db27da85f3971
+    key: ${QWEATHER_KEY:}
   doubao:
-    key: 2dd2e18c-9d00-4e1d-829b-e28ea619d74a
-    endpoint-lite: ep-20260324191252-nqnng
-    endpoint-mini: ep-20260325141225-h7lw6
-    endpoint-seedream: ep-20260327185802-n7wkt
+    key: ${DOUBAO_KEY:}
+    endpoint-lite: ${DOUBAO_ENDPOINT_LITE:}
+    endpoint-mini: ${DOUBAO_ENDPOINT_MINI:}
+    endpoint-seedream: ${DOUBAO_ENDPOINT_SEEDREAM:}
     base-url: https://ark.cn-beijing.volces.com/api/v3
   volcengine:
-
-    ak: AKLTZTc0NmY5NzA0Yjc0NGZlZDljOTNmMTg3ZWRjOTU0NzU
-    sk: TURVNE5qSTVNbUZtWkdNM05EUTVNR0V4TmpZNE5UWmpOV1l5TWpFeE1UVQ==
+    ak: ${VOLCENGINE_AK:}
+    sk: ${VOLCENGINE_SK:}
 
 # AI 引擎配置 (Ark/Seedream)
 ai:
   ark:
-    ak: AKLTZTc0NmY5NzA0Yjc0NGZlZDljOTNmMTg3ZWRjOTU0NzU
-    sk: TURVNE5qSTVNbUZtWkdNM05EUTVNR0V4TmpZNE5UWmpOV1l5TWpFeE1UVQ==
+    ak: ${ARK_AK:}
+    sk: ${ARK_SK:}
     model-id: doubao-seedream-241028
     
 # 系统业务配置
 app:
   jwt:
     expire-time: 604800000 # 7天
-    secret: CampusOutfitSuperSecretKeyForJwtAuthenticationWhichNeedsToBeLongEnough
+    secret: ${JWT_SECRET:CampusOutfitSuperSecretKeyForJwtAuthenticationWhichNeedsToBeLongEnough}
   ranking:
     hot-weight:
       like: 1.0

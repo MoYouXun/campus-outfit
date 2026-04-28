@@ -152,19 +152,23 @@ const handleItemClick = (item: any) => {
               <div class="absolute bottom-4 right-4 flex gap-2 animate-fade-in">
                 <!-- 点赞按钮 -->
                 <div 
-                  class="w-10 h-10 rounded-full backdrop-blur-md flex-center transition-all duration-300"
-                  :class="item.liked ? 'bg-red-500 text-white' : 'bg-white/20 text-white hover:bg-white/40'"
+                  class="w-10 h-10 rounded-full backdrop-blur-md flex-center transition-all duration-300 cursor-pointer hover:scale-110 active:scale-95"
+                  :class="item.liked 
+                    ? 'bg-gradient-to-br from-rose-500 to-pink-500 text-white shadow-lg shadow-rose-500/40' 
+                    : 'bg-black/30 text-white border border-white/10 hover:bg-black/50 hover:shadow-md'"
                   @click.stop="emit('like', item)"
                 >
-                  <el-icon size="20"><Pointer /></el-icon>
+                  <el-icon size="20" class="transition-transform duration-300" :class="{'scale-110': item.liked}"><Pointer /></el-icon>
                 </div>
                 <!-- 收藏按钮 -->
                 <div 
-                  class="w-10 h-10 rounded-full backdrop-blur-md flex-center transition-all duration-300"
-                  :class="item.favorited ? 'bg-yellow-500 text-white' : 'bg-white/20 text-white hover:bg-white/40'"
+                  class="w-10 h-10 rounded-full backdrop-blur-md flex-center transition-all duration-300 cursor-pointer hover:scale-110 active:scale-95"
+                  :class="item.favorited 
+                    ? 'bg-gradient-to-br from-amber-400 to-orange-500 text-white shadow-lg shadow-amber-500/40' 
+                    : 'bg-black/30 text-white border border-white/10 hover:bg-black/50 hover:shadow-md'"
                   @click.stop="emit('favorite', item)"
                 >
-                  <el-icon size="20">
+                  <el-icon size="20" class="transition-transform duration-300" :class="{'scale-110': item.favorited}">
                     <component :is="item.favorited ? StarFilled : Star" />
                   </el-icon>
                 </div>
@@ -214,9 +218,15 @@ const handleItemClick = (item: any) => {
                 <el-avatar :size="24" :src="item.userAvatar" class="bg-primary/20" />
                 <span class="text-xs font-medium text-foreground/80 truncate max-w-[80px]">{{ item.username || '匿名用户' }}</span>
               </div>
-              <div class="flex items-center gap-1 text-muted-foreground text-[10px] font-medium transition-colors cursor-pointer hover:text-yellow-500" :class="{'text-yellow-500': item.favorited}" @click.stop="emit('favorite', item)">
-                <el-icon><component :is="item.favorited ? StarFilled : Star" /></el-icon>
-                <span>{{ item.favCount || 0 }}</span>
+              <div 
+                class="flex items-center gap-1.5 text-muted-foreground text-xs font-semibold transition-all duration-300 cursor-pointer hover:scale-105 active:scale-95 hover:text-amber-500" 
+                :class="{'text-amber-500 font-bold': item.favorited}" 
+                @click.stop="emit('favorite', item)"
+              >
+                <el-icon class="transition-transform duration-300" :class="{'scale-110 animate-pulse': item.favorited}">
+                  <component :is="item.favorited ? StarFilled : Star" />
+                </el-icon>
+                <span class="tabular-nums">{{ item.favCount || 0 }}</span>
               </div>
             </div>
           </div>

@@ -14,7 +14,7 @@ import {
   Picture, 
   Setting,
   SwitchButton,
-  Shield,
+  Lock,
   Check,
   Close,
   View,
@@ -154,22 +154,29 @@ const rejectReport = async (id: number) => {
 
 const handleLogout = async () => {
   try {
-    await ElMessageBox.confirm('确定退出管理系统吗？', '提示', { type: 'info' })
-    userStore.clearUser()
-    router.push('/login')
-    ElMessage.success('已退出登录')
+    await ElMessageBox.confirm('确定要离开后台管理，返回社区首页吗？', '提示', {
+      confirmButtonText: '确定',
+      cancelButtonText: '取消',
+      type: 'info',
+      customClass: 'glass-message-box'
+    })
+    // 仅仅退出后台视图，切回社区主页，不清除当前管理员的登录态
+    router.push('/')
+    ElMessage.success('已返回社区首页')
   } catch (e) {}
 }
+
 
 const initDashboard = async () => {
   try {
     const summaryRes: any = await request.get('/admin/stats/summary')
-    userTotal.value = summaryRes.userTotal || 0
-    outfitTotal.value = summaryRes.outfitTotal || 0
+    userTotal.value = summaryRes?.userTotal || 0
+    outfitTotal.value = summaryRes?.outfitTotal || 0
 
     const res: any = await request.get('/admin/stats/trend?days=7')
-    const stats = [...res].reverse() // 按时间正序
-    const dates = stats.map(s => s.statDate)
+    // 增加数组判定，防止展开 null 导致致命报错 res is not iterable
+    const stats = Array.isArray(res) ? [...res].reverse() : []
+    const dates = stats.map(s => s.statDate || '')
     
     // 更新概览卡片 (取最新一天的数据作为“今日概览”，总数来源于 API 实时加载)
     const latest = stats[stats.length - 1] || {}
@@ -179,7 +186,7 @@ const initDashboard = async () => {
     await nextTick()
 
     const trendDom = document.getElementById('chartTrend')
-    if (trendDom) {
+    if (trendDom && dates.length > 0) {
       if (trendChart) trendChart.dispose()
       trendChart = echarts.init(trendDom)
       trendChart.setOption({
@@ -189,14 +196,14 @@ const initDashboard = async () => {
         xAxis: { type: 'category', boundaryGap: false, data: dates, axisLabel: { color: isDark.value ? '#64748b' : '#94a3b8' } },
         yAxis: { type: 'value', splitLine: { lineStyle: { color: isDark.value ? '#334155' : '#f1f5f9' } } },
         series: [
-          { name: '用户', type: 'line', smooth: true, data: stats.map(s => s.newUserCount), color: '#6366f1', areaStyle: { color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [{ offset: 0, color: 'rgba(99, 102, 241, 0.3)' }, { offset: 1, color: 'rgba(99, 102, 241, 0)' }]) } },
+          { name: '用户', type: 'line', smooth: true, data: stats.map(s => s.newUserCount), color: '#3b82f6', areaStyle: { color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [{ offset: 0, color: 'rgba(59, 130, 246, 0.3)' }, { offset: 1, color: 'rgba(59, 130, 246, 0)' }]) } },
           { name: '穿搭', type: 'line', smooth: true, data: stats.map(s => s.newOutfitCount), color: '#10b981', areaStyle: { color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [{ offset: 0, color: 'rgba(16, 185, 129, 0.3)' }, { offset: 1, color: 'rgba(16, 185, 129, 0)' }]) } }
         ]
       })
     }
 
     const aiDom = document.getElementById('chartAi')
-    if (aiDom) {
+    if (aiDom && dates.length > 0) {
       if (aiChartInstance) aiChartInstance.dispose()
       aiChartInstance = echarts.init(aiDom)
       aiChartInstance.setOption({
@@ -205,7 +212,7 @@ const initDashboard = async () => {
         xAxis: { type: 'category', data: dates },
         yAxis: { type: 'value' },
         series: [
-          { name: 'AI 调用量', type: 'bar', data: stats.map(s => s.aiCallCount), color: '#8b5cf6', barWidth: '60%' }
+          { name: 'AI 调用量', type: 'bar', data: stats.map(s => s.aiCallCount), color: '#0ea5e9', barWidth: '60%' }
         ]
       })
     }
@@ -213,6 +220,7 @@ const initDashboard = async () => {
     console.error('Stats load failed:', e)
   }
 }
+
 
 const handleResize = () => {
   trendChart?.resize()
@@ -250,12 +258,12 @@ onUnmounted(() => {
     <el-aside width="260px" class="admin-sidebar">
       <div class="px-7 py-8 mb-4">
         <div class="flex items-center gap-4 group cursor-pointer">
-          <div class="w-11 h-11 rounded-2xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white shadow-lg shadow-indigo-500/30 group-hover:rotate-12 transition-transform">
-            <el-icon size="24"><Shield /></el-icon>
+          <div class="w-11 h-11 rounded-2xl bg-gradient-to-br from-primary to-[#1a2a3a] flex items-center justify-center text-white shadow-lg shadow-primary/30 group-hover:rotate-12 transition-transform">
+            <el-icon size="24"><Lock /></el-icon>
           </div>
           <div>
-            <h2 class="font-black tracking-tight text-xl dark:text-white">Admin Hub</h2>
-            <p class="text-[9px] text-[#6366f1] uppercase tracking-[0.2em] font-black">Campus Moderation</p>
+            <h2 class="font-black tracking-tight text-xl dark:text-white">管理中心</h2>
+            <p class="text-[9px] text-primary uppercase tracking-[0.2em] font-black">校园风控系统</p>
           </div>
         </div>
       </div>
@@ -290,10 +298,10 @@ onUnmounted(() => {
 
       <div class="p-6">
         <div class="sidebar-user-card">
-          <el-avatar :size="36" :src="userStore.userInfo.avatar" class="ring-2 ring-indigo-500/20" />
+          <el-avatar :size="36" :src="userStore.userInfo.avatar" class="ring-2 ring-primary/20" />
           <div class="flex-1 min-w-0">
             <p class="text-sm font-bold truncate dark:text-white">{{ userStore.userInfo.username }}</p>
-            <p class="text-[10px] text-slate-400 font-bold uppercase truncate">Primary Admin</p>
+            <p class="text-[10px] text-slate-400 font-bold uppercase truncate">超级管理员</p>
           </div>
         </div>
       </div>
@@ -305,13 +313,13 @@ onUnmounted(() => {
         <div class="flex flex-col justify-center">
           <h3 class="text-xl font-black text-slate-800 dark:text-white">
             {{ 
-              activeMenu === 'dashboard' ? 'Overview' : 
-              activeMenu === 'reports' ? 'Moderation Queue' : 
-              activeMenu === 'users' ? 'Account Assets' : 
-              activeMenu === 'outfits' ? 'Content Quality' : 'System Engine'
+              activeMenu === 'dashboard' ? '数据概览' : 
+              activeMenu === 'reports' ? '风控工单队列' : 
+              activeMenu === 'users' ? '账号资产管理' : 
+              activeMenu === 'outfits' ? '内容质量审查' : '系统底层引擎'
             }}
           </h3>
-          <p class="text-xs text-slate-400 font-medium">Hello, Super Admin. Welcome back.</p>
+          <p class="text-xs text-slate-400 font-medium">您好，超级管理员。欢迎回来。</p>
         </div>
         <div class="flex items-center gap-5">
           <div class="flex bg-slate-100 dark:bg-slate-800 p-1 rounded-full">
@@ -324,7 +332,7 @@ onUnmounted(() => {
             </button>
             <button 
               class="w-10 h-10 rounded-full flex items-center justify-center transition-all"
-              :class="isDark ? 'bg-slate-700 text-indigo-400 shadow-sm' : 'text-slate-400 hover:text-slate-900'"
+              :class="isDark ? 'bg-slate-700 text-primary shadow-sm' : 'text-slate-400 hover:text-slate-900'"
               @click="isDark = true"
             >
               <el-icon :size="18"><Moon /></el-icon>
@@ -344,12 +352,12 @@ onUnmounted(() => {
         <div v-if="activeMenu === 'dashboard'" class="max-w-7xl mx-auto space-y-8 animate-in fade-in slide-in-from-bottom-6 duration-700">
           <!-- Bento Grid Stats -->
           <div class="grid grid-cols-4 gap-6">
-            <div class="bento-stat bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 dark:text-indigo-400 col-span-1">
+            <div class="bento-stat bg-primary/10 dark:bg-primary/20 text-primary col-span-1">
               <div class="flex flex-col h-full justify-between">
                 <el-icon :size="32"><User /></el-icon>
                 <div>
                   <h4 class="text-3xl font-black mb-1 mt-6 tracking-tight">{{ userTotal }}</h4>
-                  <p class="text-[10px] font-black uppercase tracking-widest opacity-60">Total Campus Users</p>
+                  <p class="text-[10px] font-black uppercase tracking-widest opacity-60">校园总用户数</p>
                 </div>
               </div>
             </div>
@@ -358,7 +366,7 @@ onUnmounted(() => {
                 <el-icon :size="32"><Aim /></el-icon>
                 <div>
                   <h4 class="text-3xl font-black mb-1 mt-6 tracking-tight">{{ reportToday }}</h4>
-                  <p class="text-[10px] font-black uppercase tracking-widest opacity-60">Critical Reports Today</p>
+                  <p class="text-[10px] font-black uppercase tracking-widest opacity-60">今日紧急工单</p>
                 </div>
               </div>
               <div class="absolute -right-4 -top-4 opacity-5 rotate-12">
@@ -368,7 +376,7 @@ onUnmounted(() => {
             <div class="bento-stat flex-row items-center gap-6 bg-slate-900 dark:bg-slate-800 text-white col-span-2">
               <div class="flex-1">
                 <h4 class="text-4xl font-black tracking-tight mb-2">{{ outfitTotal }}</h4>
-                <p class="text-xs text-white/50 font-bold max-w-[180px]">Total content posted and shared across the campus community.</p>
+                <p class="text-xs text-white/50 font-bold max-w-[180px]">在校园社区中发布和共享的内容总计。</p>
               </div>
               <div class="w-24 h-24 rounded-3xl bg-white/10 flex items-center justify-center backdrop-blur-md">
                 <el-icon :size="48"><Picture /></el-icon>
@@ -377,17 +385,17 @@ onUnmounted(() => {
             <div class="bento-stat bg-white dark:bg-slate-800 col-span-4 overflow-hidden !p-0">
                <div class="flex items-center px-10 h-24 gap-12 border-b border-slate-100 dark:border-slate-700/50">
                   <div class="flex items-center gap-4">
-                    <div class="w-10 h-10 rounded-full bg-violet-50 dark:bg-violet-900/30 text-violet-500 flex items-center justify-center">
+                    <div class="w-10 h-10 rounded-full bg-primary/10 dark:bg-primary/20 text-primary flex items-center justify-center">
                       <el-icon :size="20"><Cpu /></el-icon>
                     </div>
                     <div>
-                      <p class="text-[10px] font-black text-slate-400 uppercase">AI Total Usage</p>
+                      <p class="text-[10px] font-black text-slate-400 uppercase">AI 接口总调用量</p>
                       <p class="text-xl font-black dark:text-white">{{ aiCallTotal }}</p>
                     </div>
                   </div>
                   <el-divider direction="vertical" class="!h-10 opacity-30" />
                   <div class="flex-1 flex gap-2 overflow-hidden items-end h-8">
-                     <div v-for="i in 20" :key="i" class="flex-1 bg-violet-100 dark:bg-violet-900/20 rounded-t-sm" :style="{ height: Math.random()*100 + '%' }"></div>
+                     <div v-for="i in 20" :key="i" class="flex-1 bg-primary/20 dark:bg-primary/30 rounded-t-sm" :style="{ height: Math.random()*100 + '%' }"></div>
                   </div>
                </div>
             </div>
@@ -400,12 +408,12 @@ onUnmounted(() => {
                 <template #header>
                   <div class="flex items-center justify-between">
                     <span class="font-black text-slate-800 dark:text-white flex items-center gap-3">
-                      <div class="w-8 h-8 rounded-lg bg-indigo-50 dark:bg-indigo-900/30 text-indigo-500 flex items-center justify-center">
+                      <div class="w-8 h-8 rounded-lg bg-primary/10 dark:bg-primary/20 text-primary flex items-center justify-center">
                         <el-icon><TrendCharts /></el-icon>
                       </div>
                       业务增长曲线
                     </span>
-                    <el-tag size="small" type="primary" effect="plain" class="!border-indigo-100 !bg-indigo-50/50 !rounded-full">实时 · 七天</el-tag>
+                    <el-tag size="small" type="primary" effect="plain" class="!border-primary/20 !bg-primary/10 !rounded-full">实时 · 七天</el-tag>
                   </div>
                 </template>
                 <div id="chartTrend" class="w-full h-[340px]"></div>
@@ -415,7 +423,7 @@ onUnmounted(() => {
               <el-card shadow="never" class="pro-card h-[460px]">
                 <template #header>
                   <span class="font-black text-slate-800 dark:text-white flex items-center gap-3">
-                    <div class="w-8 h-8 rounded-lg bg-violet-50 dark:bg-violet-900/30 text-violet-500 flex items-center justify-center">
+                    <div class="w-8 h-8 rounded-lg bg-primary/10 dark:bg-primary/20 text-primary flex items-center justify-center">
                       <el-icon><Monitor /></el-icon>
                     </div>
                     AI 调用分布
@@ -507,15 +515,15 @@ onUnmounted(() => {
           <div v-if="activeMenu === 'settings'" class="space-y-6">
             <div class="grid grid-cols-3 gap-6">
               <div v-for="node in [
-                { title: 'Core API Server', status: 'Healthy', icon: Cpu, load: '12%', color: 'text-emerald-500' },
-                { title: 'AI Model Service', status: 'Warm', icon: Connection, load: '45%', color: 'text-orange-500' },
-                { title: 'MySQL Primary', status: 'Stable', icon: Operation, load: '8%', color: 'text-blue-500' }
+                { title: '核心 API 服务', status: '健康', icon: Cpu, load: '12%', color: 'text-emerald-500' },
+                { title: 'AI 模型服务', status: '就绪', icon: Connection, load: '45%', color: 'text-orange-500' },
+                { title: 'MySQL 主库', status: '稳定', icon: Operation, load: '8%', color: 'text-blue-500' }
               ]" :key="node.title" class="pro-card p-6 flex flex-col gap-4">
                 <div class="flex justify-between items-start">
                   <div class="w-12 h-12 rounded-2xl bg-secondary flex-center">
                     <el-icon :size="24" :class="node.color"><component :is="node.icon" /></el-icon>
                   </div>
-                  <el-tag size="small" :type="node.status === 'Healthy' ? 'success' : node.status === 'Warm' ? 'warning' : ''" effect="plain">{{ node.status }}</el-tag>
+                  <el-tag size="small" :type="node.status === '健康' ? 'success' : node.status === '就绪' ? 'warning' : ''" effect="plain">{{ node.status }}</el-tag>
                 </div>
                 <div>
                   <h5 class="font-black text-slate-800 dark:text-white">{{ node.title }}</h5>
@@ -570,8 +578,8 @@ onUnmounted(() => {
           </div>
           
           <div class="flex justify-between items-center text-[10px] text-slate-300 font-bold uppercase tracking-widest px-2">
-            <span>Posted: {{ previewData.createTime }}</span>
-            <span>Status: {{ previewData.status }}</span>
+            <span>发布时间: {{ previewData.createTime }}</span>
+            <span>状态: {{ previewData.status }}</span>
           </div>
         </div>
       </div>
@@ -607,7 +615,7 @@ onUnmounted(() => {
 }
 
 :deep(.admin-menu .el-menu-item.is-active) {
-  @apply bg-[#6366f1] text-white shadow-lg shadow-indigo-500/20 translate-x-1;
+  @apply bg-primary text-white shadow-lg shadow-primary/20 translate-x-1;
 }
 
 .sidebar-user-card {

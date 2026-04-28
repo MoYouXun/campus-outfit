@@ -326,17 +326,27 @@ onMounted(loadData)
             </div>
 
             <div class="flex items-center gap-6 py-2">
-              <div class="flex items-center gap-1.5 cursor-pointer group" @click="handleLike">
-                <div :class="['w-9 h-9 rounded-full flex-center transition-all', outfitDetail.liked ? 'bg-red-500/10 text-red-500' : 'bg-secondary text-muted-foreground group-hover:bg-primary/10 group-hover:text-primary']">
-                  <el-icon size="18"><Pointer /></el-icon>
+              <div class="flex items-center gap-2 cursor-pointer group transition-transform duration-200 hover:scale-105 active:scale-95" @click="handleLike">
+                <div 
+                  class="w-10 h-10 rounded-full flex-center transition-all duration-300" 
+                  :class="outfitDetail.liked 
+                    ? 'bg-gradient-to-br from-rose-500 to-pink-500 text-white shadow-md shadow-rose-500/30' 
+                    : 'bg-secondary text-muted-foreground group-hover:bg-rose-500/10 group-hover:text-rose-500'"
+                >
+                  <el-icon size="18" class="transition-transform duration-300" :class="{'scale-110 animate-pulse': outfitDetail.liked}"><Pointer /></el-icon>
                 </div>
-                <span :class="['text-xs font-bold', outfitDetail.liked ? 'text-red-500' : 'text-muted-foreground']">{{ outfitDetail.outfit.likeCount }}</span>
+                <span :class="['text-sm font-bold transition-colors duration-300', outfitDetail.liked ? 'text-rose-500' : 'text-muted-foreground group-hover:text-rose-500']">{{ outfitDetail.outfit.likeCount }}</span>
               </div>
-              <div class="flex items-center gap-1.5 cursor-pointer group" @click="handleFavorite">
-                <div :class="['w-9 h-9 rounded-full flex-center transition-all', outfitDetail.favorited ? 'bg-yellow-500/10 text-yellow-500' : 'bg-secondary text-muted-foreground group-hover:bg-primary/10 group-hover:text-primary']">
-                  <el-icon size="18"><Star /></el-icon>
+              <div class="flex items-center gap-2 cursor-pointer group transition-transform duration-200 hover:scale-105 active:scale-95" @click="handleFavorite">
+                <div 
+                  class="w-10 h-10 rounded-full flex-center transition-all duration-300" 
+                  :class="outfitDetail.favorited 
+                    ? 'bg-gradient-to-br from-amber-400 to-orange-500 text-white shadow-md shadow-amber-500/30' 
+                    : 'bg-secondary text-muted-foreground group-hover:bg-amber-500/10 group-hover:text-amber-500'"
+                >
+                  <el-icon size="18" class="transition-transform duration-300" :class="{'scale-110 animate-pulse': outfitDetail.favorited}"><Star /></el-icon>
                 </div>
-                <span :class="['text-xs font-bold', outfitDetail.favorited ? 'text-yellow-500' : 'text-muted-foreground']">{{ outfitDetail.outfit.favCount }}</span>
+                <span :class="['text-sm font-bold transition-colors duration-300', outfitDetail.favorited ? 'text-amber-500' : 'text-muted-foreground group-hover:text-amber-500']">{{ outfitDetail.outfit.favCount }}</span>
               </div>
               <el-button type="danger" link @click="openReportDialog" title="举报违规">
                 <el-icon><Warning /></el-icon> 举报

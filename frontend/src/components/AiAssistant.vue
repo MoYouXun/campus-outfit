@@ -224,7 +224,7 @@ const closeViewer = () => {
       class="fab-btn group animate-bounce-slow"
       @click="openAssistant"
     >
-      <div class="absolute -inset-2 bg-gradient-to-r from-primary to-indigo-500 rounded-full blur opacity-40 group-hover:opacity-100 transition duration-1000 group-hover:duration-200 animate-pulse"></div>
+      <div class="absolute -inset-2 bg-gradient-to-r from-primary to-[#1a2a3a] rounded-full blur opacity-40 group-hover:opacity-100 transition duration-1000 group-hover:duration-200 animate-pulse"></div>
       <div class="relative w-14 h-14 bg-primary text-white rounded-full flex items-center justify-center shadow-2xl cursor-pointer hover:scale-110 transition-transform">
         <el-icon size="28"><MagicStick /></el-icon>
       </div>

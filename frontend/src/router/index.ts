@@ -1,5 +1,6 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import { useUserStore } from '@/stores/user'
+import { ElMessage } from 'element-plus'
 
 const router = createRouter({
   history: createWebHistory('/'),
@@ -78,11 +79,13 @@ router.beforeEach(async (to, _from, next) => {
 
   // 3. 权限校验
   if (to.meta.requiresAdmin && role !== 'ADMIN') {
+    ElMessage.warning('您没有权限访问后台管理系统！')
     next('/')
     return
   }
 
   next()
 })
+
 
 export default router

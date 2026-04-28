@@ -7,7 +7,7 @@ import { likeOutfit, unlikeOutfit, favoriteOutfit, unfavoriteOutfit } from '@/ap
 import MasonryGallery from '@/components/MasonryGallery.vue'
 import { useUserStore } from '@/stores/user'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { MagicStick, Plus, Delete } from '@element-plus/icons-vue'
+import { MagicStick, Plus, Delete, Message } from '@element-plus/icons-vue'
 import { getWardrobeList, uploadWardrobeItem, deleteWardrobeItem } from '@/api/wardrobe'
 import EditProfileDialog from '@/components/EditProfileDialog.vue'
 const editDialogRef = ref<any>(null)
@@ -243,26 +243,89 @@ onMounted(loadUser)
 
 <template>
   <div class="min-h-screen bg-background pb-20">
-    <div class="h-48 bg-gradient-to-r from-primary/15 via-secondary/60 to-primary/5"></div>
+    <!-- 个人资料英雄背景 -->
+    <div class="relative h-64 overflow-hidden">
+      <div class="absolute inset-0 bg-gradient-to-br from-primary/30 via-secondary/40 to-background animate-aurora"></div>
+      <div class="absolute inset-0 backdrop-blur-[2px]"></div>
+      <!-- 装饰性光晕 -->
+      <div class="absolute -top-24 -left-24 w-96 h-96 bg-primary/20 rounded-full blur-[100px] animate-pulse"></div>
+      <div class="absolute -bottom-24 -right-24 w-96 h-96 bg-secondary/20 rounded-full blur-[100px] animate-pulse" style="animation-delay: 2s"></div>
+    </div>
 
-
-    <div class="max-w-5xl mx-auto px-6 -mt-16">
-      <div class="flex flex-col md:flex-row items-center md:items-end gap-6 mb-10">
-        <el-avatar :size="120" :src="user?.avatar" class="border-4 border-white shadow-xl" />
-        <div class="flex-1 text-center md:text-left">
-          <h1 class="text-3xl font-bold mb-2">{{ user?.nickname || user?.username }}</h1>
-          <p class="text-muted-foreground mb-4">{{ user?.bio || '这家伙很懒，什么都没留下~' }}</p>
-          <div class="flex gap-6 justify-center md:justify-start">
-            <div class="text-center"><div class="font-bold text-xl">{{ user?.followCount || 0 }}</div><div class="text-xs text-muted-foreground uppercase">关注</div></div>
-            <div class="text-center"><div class="font-bold text-xl">{{ user?.fanCount || 0 }}</div><div class="text-xs text-muted-foreground uppercase">粉丝</div></div>
-            <div class="text-center"><div class="font-bold text-xl">{{ outfits.length }}</div><div class="text-xs text-muted-foreground uppercase">穿搭</div></div>
+    <!-- 个人资料卡片容器 -->
+    <div class="max-w-5xl mx-auto px-6 -mt-24 relative z-10">
+      <div class="glass-card p-8 md:p-10 rounded-[32px] border border-white/20 shadow-2xl backdrop-blur-xl animate-slide-up">
+        <div class="flex flex-col md:flex-row items-center md:items-end gap-8">
+          <!-- 头像区域 -->
+          <div class="relative group">
+            <div class="absolute -inset-1 bg-gradient-to-tr from-primary to-secondary rounded-full blur opacity-25 group-hover:opacity-50 transition duration-500"></div>
+            <el-avatar 
+              :size="140" 
+              :src="user?.avatar" 
+              class="relative border-4 border-white shadow-xl hover:scale-105 transition-transform duration-500 cursor-pointer"
+            />
+            <div v-if="isCurrentUser" class="absolute bottom-1 right-1 w-8 h-8 bg-primary rounded-full flex-center text-white border-2 border-white shadow-lg cursor-pointer hover:scale-110 transition-transform" @click="editDialogRef?.open(currentUserId)">
+              <el-icon size="16"><MagicStick /></el-icon>
+            </div>
           </div>
-        </div>
-        <div class="pb-2 flex gap-2">
-          <el-button v-if="isCurrentUser" type="default" plain round @click="editDialogRef?.open(currentUserId)">编辑资料</el-button>
-          <el-button v-if="!isCurrentUser" :type="isFollowing ? 'default' : 'primary'" @click="handleFollow" size="large" round>
-            {{ isFollowing ? '取消关注' : '加关注' }}
-          </el-button>
+
+          <!-- 用户基本信息 -->
+          <div class="flex-1 text-center md:text-left space-y-4">
+            <div class="space-y-1">
+              <h1 class="text-4xl font-bold tracking-tight text-foreground">
+                {{ user?.nickname || user?.username }}
+              </h1>
+            </div>
+            
+            <p class="text-muted-foreground text-sm max-w-xl leading-relaxed italic">
+              "{{ user?.bio || '这家伙很懒，什么都没留下~' }}"
+            </p>
+
+            <!-- 统计数据 -->
+            <div class="flex gap-8 justify-center md:justify-start pt-2">
+              <div class="stat-group">
+                <span class="stat-value">{{ user?.followCount || 0 }}</span>
+                <span class="stat-label">关注</span>
+              </div>
+              <div class="w-px h-8 bg-border/50 self-center"></div>
+              <div class="stat-group">
+                <span class="stat-value">{{ user?.fanCount || 0 }}</span>
+                <span class="stat-label">粉丝</span>
+              </div>
+              <div class="w-px h-8 bg-border/50 self-center"></div>
+              <div class="stat-group">
+                <span class="stat-value">{{ outfits.length }}</span>
+                <span class="stat-label">作品</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- 交互操作按钮 -->
+          <div class="flex gap-3 md:pb-2">
+            <el-button 
+              v-if="isCurrentUser" 
+              type="primary" 
+              round 
+              size="large"
+              class="premium-button px-8"
+              @click="editDialogRef?.open(currentUserId)"
+            >
+              编辑资料
+            </el-button>
+            <el-button 
+              v-if="!isCurrentUser" 
+              :type="isFollowing ? 'default' : 'primary'" 
+              round 
+              size="large"
+              class="px-8 shadow-lg hover:shadow-primary/20"
+              @click="handleFollow"
+            >
+              {{ isFollowing ? '已关注' : '加关注' }}
+            </el-button>
+            <el-button v-if="!isCurrentUser" circle size="large" class="shadow-md">
+              <el-icon><Message /></el-icon>
+            </el-button>
+          </div>
         </div>
       </div>
 
@@ -359,3 +422,107 @@ onMounted(loadUser)
     <EditProfileDialog ref="editDialogRef" @success="handleEditSuccess" />
   </div>
 </template>
+
+<style scoped>
+.profile-tabs :deep(.el-tabs__nav-wrap::after) {
+  display: none;
+}
+
+.profile-tabs :deep(.el-tabs__active-bar) {
+  height: 3px;
+  border-radius: 3px;
+  background: var(--el-color-primary);
+}
+
+.profile-tabs :deep(.el-tabs__item) {
+  font-size: 1.1rem;
+  font-weight: 600;
+  padding: 0 2rem;
+  transition: all 0.3s;
+}
+
+.profile-tabs :deep(.el-tabs__item.is-active) {
+  color: var(--el-color-primary);
+  transform: translateY(-2px);
+}
+
+.glass-card {
+  background: rgba(255, 255, 255, 0.7);
+}
+
+.dark .glass-card {
+  background: rgba(15, 23, 42, 0.7);
+}
+
+.stat-group {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  transition: transform 0.3s;
+}
+
+@media (min-width: 768px) {
+  .stat-group {
+    align-items: flex-start;
+  }
+}
+
+.stat-group:hover {
+  transform: translateY(-2px);
+}
+
+.stat-value {
+  font-size: 1.5rem;
+  font-weight: 800;
+  background: var(--el-color-primary);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.stat-label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--el-text-color-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.premium-button {
+  background: var(--el-color-primary);
+  border: none;
+  transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.premium-button:hover {
+  transform: translateY(-2px) scale(1.02);
+  box-shadow: 0 10px 20px -10px var(--el-color-primary);
+}
+
+@keyframes aurora {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+
+.animate-aurora {
+  background-size: 200% 200%;
+  animation: aurora 15s ease infinite;
+}
+
+@keyframes slide-up {
+  from { opacity: 0; transform: translateY(20px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.animate-slide-up {
+  animation: slide-up 0.8s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+/* 玻璃拟态适配 */
+.glass-message-box {
+  background: rgba(255, 255, 255, 0.8) !important;
+  backdrop-filter: blur(20px) !important;
+  border: 1px solid rgba(255, 255, 255, 0.3) !important;
+  border-radius: 24px !important;
+}
+</style>

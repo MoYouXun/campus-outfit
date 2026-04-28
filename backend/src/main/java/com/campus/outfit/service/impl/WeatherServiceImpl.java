@@ -106,18 +106,29 @@ public class WeatherServiceImpl implements WeatherService {
     @SuppressWarnings("unchecked")
     private WeatherInfoVO fetchFromApi(Double lat, Double lon, String locationName) {
         try {
-            String url = String.format(
-                "https://api.open-meteo.com/v1/forecast?latitude=%f&longitude=%f&current_weather=true", lat, lon);
+            // 强制使用 Locale.US 确保经纬度小数点为 "." 而非某些地区的 ","
+            String url = String.format(java.util.Locale.US,
+                "https://api.open-meteo.com/v1/forecast?latitude=%.4f&longitude=%.4f&current=temperature_2m,weather_code", lat, lon);
+            
+            log.info("[WeatherService] 正在请求天气 API: {}", url);
             Map<String, Object> response = restTemplate.getForObject(url, Map.class);
 
-            if (response != null && response.containsKey("current_weather")) {
-                Map<String, Object> current = (Map<String, Object>) response.get("current_weather");
-                double temp = ((Number) current.get("temperature")).doubleValue();
-                int weatherCode = ((Number) current.get("weathercode")).intValue();
+            if (response != null && response.containsKey("current")) {
+                Map<String, Object> current = (Map<String, Object>) response.get("current");
+                
+                // 安全提取温度
+                Object tempObj = current.get("temperature_2m");
+                double temp = (tempObj instanceof Number) ? ((Number) tempObj).doubleValue() : 22.0;
+                
+                // 安全提取天气代码
+                Object codeObj = current.get("weather_code");
+                int weatherCode = (codeObj instanceof Number) ? ((Number) codeObj).intValue() : 0;
 
                 String desc = mapWeatherCode(weatherCode);
                 String dressIndex = getDressIndex(temp);
                 String suggestion = getSuggestion(temp, desc);
+
+                log.info("[WeatherService] 成功获取实时天气: {} {}℃", desc, temp);
 
                 return WeatherInfoVO.builder()
                         .location(locationName)
@@ -126,9 +137,11 @@ public class WeatherServiceImpl implements WeatherService {
                         .dressIndex(dressIndex)
                         .suggestion(suggestion)
                         .build();
+            } else {
+                log.warn("[WeatherService] API 响应格式异常或数据为空: {}", response);
             }
         } catch (Exception e) {
-            log.error("[WeatherCache] 获取外部天气 API 异常 (lat:{}, lon:{}): {}", lat, lon, e.getMessage());
+            log.error("[WeatherService] 获取外部天气 API 异常 (lat:{}, lon:{}): {}", lat, lon, e.getMessage());
         }
         return fallbackMock(locationName);
     }
@@ -164,7 +177,7 @@ public class WeatherServiceImpl implements WeatherService {
                 .temperature("22°C")
                 .weatherDesc("多云")
                 .dressIndex("舒适")
-                .suggestion("温度适中，长短袖皆可。")
+                .suggestion("实时天气获取略有延迟，暂为您提供温和天气下的通用穿搭建议。")
                 .build();
     }
 }
